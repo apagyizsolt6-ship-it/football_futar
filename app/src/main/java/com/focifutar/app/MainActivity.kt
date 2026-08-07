@@ -1,9 +1,10 @@
 package com.focifutar.app
 
+import android.content.Context
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,7 +20,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +39,17 @@ val AccentGreen = Color(0xFF00FF66)
 val AccentRed = Color(0xFFFF3366)
 val TextWhite = Color(0xFFFFFFFF)
 val TextMuted = Color(0xFF8C96A0)
+
+// Helper függvények az API kulcs elmentésére a telefon belső tárhelyére
+fun saveApiKey(context: Context, key: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    prefs.edit().putString("statpal_api_key", key).apply()
+}
+
+fun getApiKey(context: Context): String {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getString("statpal_api_key", "") ?: ""
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,6 +85,9 @@ class MainActivity : ComponentActivity() {
                         val match = mockData.flatMap { it.matches }.find { it.id == matchId }
                         match?.let { MatchDetailScreen(it, navController) }
                     }
+                    composable("api_settings") {
+                        ApiSettingsScreen(navController)
+                    }
                 }
             }
         }
@@ -87,36 +104,60 @@ fun MatchesListScreen(leagues: List<LeagueGroup>, navController: NavController) 
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        // Fejléc & Beállítások Gomb
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = "FOOTBALL FUTÁR",
                 color = AccentGreen,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Black
             )
-            Spacer(modifier = Modifier.height(12.dp))
             
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(dates) { date ->
-                    val isSelected = date == selectedDate
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) AccentGreen else CardBackground)
-                            .clickable { selectedDate = date }
-                            .padding(horizontal = 18.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = date,
-                            color = if (isSelected) Color.Black else TextWhite,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
+            // ⚙️ Beállítások Gomb
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(CardBackground)
+                    .clickable { navController.navigate("api_settings") }
+                    .padding(10.dp)
+            ) {
+                Text(text = "⚙️", fontSize = 16.sp)
+            }
+        }
+
+        // Dátumválasztó Bar
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp)
+        ) {
+            items(dates) { date ->
+                val isSelected = date == selectedDate
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isSelected) AccentGreen else CardBackground)
+                        .clickable { selectedDate = date }
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = date,
+                        color = if (isSelected) Color.Black else TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
                 }
             }
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Meccsek listája
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
@@ -131,6 +172,71 @@ fun MatchesListScreen(leagues: List<LeagueGroup>, navController: NavController) 
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ApiSettingsScreen(navController: NavController) {
+    val context = LocalContext.current
+    var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundDark)
+            .padding(20.dp)
+    ) {
+        Text(
+            text = "← Vissza",
+            color = AccentGreen,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clickable { navController.popBackStack() }
+                .padding(bottom = 20.dp)
+        )
+
+        Text(
+            text = "API BEÁLLÍTÁSOK",
+            color = TextWhite,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Text(
+            text = "Illeszd be a StatPal Starter API kulcsodat az élő adatok lekéréséhez.",
+            color = TextMuted,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+        )
+
+        OutlinedTextField(
+            value = apiKeyInput,
+            onValueChange = { apiKeyInput = it },
+            label = { Text("StatPal API Key", color = TextMuted) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AccentGreen,
+                unfocusedBorderColor = CardBackground,
+                focusedTextColor = TextWhite,
+                unfocusedTextColor = TextWhite
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Button(
+            onClick = {
+                saveApiKey(context, apiKeyInput)
+                Toast.makeText(context, "API Kulcs elmentve!", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "Mentés", color = Color.Black, fontWeight = FontWeight.Bold)
         }
     }
 }
