@@ -96,7 +96,7 @@ fun MatchCard(match: Match) {
                 .fillMaxWidth()
                 .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            alignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = match.homeTeam, color = TextWhite, fontWeight = FontWeight.Medium)
