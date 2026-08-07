@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +31,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
 val BackgroundDark = Color(0xFF101214)
 val CardBackground = Color(0xFF1A1D21)
@@ -41,12 +44,48 @@ val TextMuted = Color(0xFF8C96A0)
 
 fun saveApiKey(context: Context, key: String) {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    prefs.edit().putString("statpal_api_key", key).apply()
+    prefs.edit().putString("statpal_api_key", key.trim()).apply()
 }
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim() ?: ""
+}
+
+// Bajnokságok szűrése (Női, Utánpótlás és 3. osztály alatti ligák kiszűrése)
+fun isAllowedLeague(leagueName: String?): Boolean {
+    if (leagueName.isNullOrBlank()) return false
+    val nameLower = leagueName.lowercase()
+
+    val forbiddenKeywords = listOf(
+        "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
+        "u17", "u18", "u19", "u20", "u21", "u23", "youth", "junior", "u-19", "u-21",
+        "3rd division", "4th division", "5th division", "3. liga", "4. liga",
+        "regionalliga", "oberliga", "landesliga", "amateur", "promocional",
+        "primera c", "primera d", "state league", "reserve", "reserves", "(am)", "b-team"
+    )
+
+    return forbiddenKeywords.none { nameLower.contains(it) }
+}
+
+// UTC kezdési időpont átalakítása a telefon helyi időzónájára
+fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
+    if (timeStr.isNullOrBlank()) return ""
+    if (!timeStr.contains(":")) return timeStr // Élő állapotok (pl. FT, HT, 67') változatlanul maradnak
+
+    return try {
+        val datePart = if (!dateStr.isNullOrBlank()) dateStr else "01.01.2026"
+        val utcFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val parsedDate = utcFormat.parse("$datePart $timeStr")
+        val localFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+            timeZone = TimeZone.getDefault()
+        }
+        if (parsedDate != null) localFormat.format(parsedDate) else timeStr
+    } catch (e: Exception) {
+        timeStr
+    }
 }
 
 var selectedMatchGlobal: StatPalMatch? = null
@@ -82,6 +121,7 @@ fun MatchesListScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
 
     var leagues by remember { mutableStateOf<List<StatPalLeague>>(emptyList()) }
+    var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -96,9 +136,13 @@ fun MatchesListScreen(navController: NavController) {
             coroutineScope.launch {
                 try {
                     val response = StatPalClient.service.getLiveMatches(apiKey)
-                    leagues = response.liveMatches?.league ?: emptyList()
+                    val rawLeagues = response.liveMatches?.league ?: emptyList()
+                    
+                    // Ligák szűrése (csak a főbb bajnokságok)
+                    leagues = rawLeagues.filter { isAllowedLeague(it.name) }
+
                     if (leagues.isEmpty()) {
-                        errorMessage = "Jelenleg nincsenek élő vagy mára ütemezett meccsek."
+                        errorMessage = "Jelenleg nincsenek kiemelt meccsek."
                     }
                 } catch (e: Exception) {
                     errorMessage = "Hiba a kapcsolódáskor: ${e.localizedMessage}"
@@ -118,6 +162,7 @@ fun MatchesListScreen(navController: NavController) {
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
+        // Fejléc ÉS Akció gombok
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -133,6 +178,24 @@ fun MatchesListScreen(navController: NavController) {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 📁 / 📂 Összes bajnokság kinyitása / becsukása gomb
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(CardBackground)
+                        .clickable {
+                            collapsedLeagueIds = if (collapsedLeagueIds.size == leagues.size) {
+                                emptySet()
+                            } else {
+                                leagues.mapNotNull { it.id ?: it.name }.toSet()
+                            }
+                        }
+                        .padding(10.dp)
+                ) {
+                    Text(text = if (collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 16.sp)
+                }
+
+                // 🔄 Frissítés gomb
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -143,6 +206,7 @@ fun MatchesListScreen(navController: NavController) {
                     Text(text = "🔄", fontSize = 16.sp)
                 }
 
+                // ⚙️ Beállítások gomb
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -179,16 +243,119 @@ fun MatchesListScreen(navController: NavController) {
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 leagues.forEach { league ->
+                    val leagueKey = league.id ?: league.name ?: ""
+                    val isCollapsed = collapsedLeagueIds.contains(leagueKey)
+
                     item {
-                        LeagueHeader(league.name ?: "Ismeretlen bajnokság")
+                        LeagueHeader(
+                            title = league.name ?: "Ismeretlen bajnokság",
+                            isCollapsed = isCollapsed,
+                            onToggle = {
+                                collapsedLeagueIds = if (isCollapsed) {
+                                    collapsedLeagueIds - leagueKey
+                                } else {
+                                    collapsedLeagueIds + leagueKey
+                                }
+                            }
+                        )
                     }
-                    items(league.match ?: emptyList()) { match ->
-                        MatchRow(match) {
-                            selectedMatchGlobal = match
-                            navController.navigate("match_detail")
+
+                    if (!isCollapsed) {
+                        items(league.match ?: emptyList()) { match ->
+                            MatchRow(match) {
+                                selectedMatchGlobal = match
+                                navController.navigate("match_detail")
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun LeagueHeader(title: String, isCollapsed: Boolean, onToggle: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CardBackground)
+            .clickable { onToggle() }
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title.uppercase(),
+                color = AccentGreen,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (isCollapsed) "▼" else "▲",
+                color = TextMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+fun MatchRow(match: StatPalMatch, onClick: () -> Unit) {
+    val isLive = match.status != "FT" && match.status != "CANCELLED" && match.status != "POSTPONED"
+    val formattedTime = formatToLocalTime(match.date, match.status ?: match.time ?: "")
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = BackgroundDark),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .border(
+                width = 1.dp,
+                color = if (isLive) AccentRed.copy(alpha = 0.5f) else Color.Transparent,
+                shape = RoundedCornerShape(8.dp)
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = formattedTime,
+                color = if (isLive) AccentRed else TextMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(55.dp)
+            )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = match.home?.name ?: "-", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = match.away?.name ?: "-", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = match.home?.goals ?: "0",
+                    color = if (isLive) AccentGreen else TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = match.away?.goals ?: "0",
+                    color = if (isLive) AccentGreen else TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
             }
         }
     }
@@ -293,7 +460,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = match.status ?: match.time ?: "",
+                    text = formatToLocalTime(match.date, match.status ?: match.time ?: ""),
                     color = AccentRed,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -556,78 +723,6 @@ fun ApiSettingsScreen(navController: NavController) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(text = "Mentés", color = Color.Black, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-fun LeagueHeader(title: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(CardBackground)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = title.uppercase(),
-            color = AccentGreen,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-fun MatchRow(match: StatPalMatch, onClick: () -> Unit) {
-    val isLive = match.status != "FT" && match.status != "CANCELLED" && match.status != "POSTPONED"
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = BackgroundDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .border(
-                width = 1.dp,
-                color = if (isLive) AccentRed.copy(alpha = 0.5f) else Color.Transparent,
-                shape = RoundedCornerShape(8.dp)
-            )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = match.status ?: match.time ?: "",
-                color = if (isLive) AccentRed else TextMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.width(55.dp)
-            )
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = match.home?.name ?: "-", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(text = match.away?.name ?: "-", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = match.home?.goals ?: "0",
-                    color = if (isLive) AccentGreen else TextWhite,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = match.away?.goals ?: "0",
-                    color = if (isLive) AccentGreen else TextWhite,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
-            }
         }
     }
 }
