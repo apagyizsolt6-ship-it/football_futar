@@ -37,34 +37,6 @@ val AccentRed = Color(0xFFFF3366)
 val TextWhite = Color(0xFFFFFFFF)
 val TextMuted = Color(0xFF8C96A0)
 
-data class Team(
-    val id: String,
-    val name: String,
-    val logoUrl: String
-)
-
-data class Match(
-    val id: String,
-    val homeTeam: Team,
-    val awayTeam: Team,
-    val homeScore: Int,
-    val awayScore: Int,
-    val timeStatus: String,
-    val isLive: Boolean,
-    val homePossession: Int = 50,
-    val awayPossession: Int = 50,
-    val homeShots: Int = 0,
-    val awayShots: Int = 0,
-    val homeXG: String = "0.0",
-    val awayXG: String = "0.0"
-)
-
-data class LeagueGroup(
-    val leagueName: String,
-    val countryFlag: String,
-    val matches: List<Match>
-)
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
