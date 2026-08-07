@@ -1,10 +1,38 @@
 package com.focifutar.app
 
+import com.google.gson.*
+import com.google.gson.reflect.TypeToken
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
+import java.lang.reflect.ParameterizedType
+import java.lang.reflect.Type
+
+// Rugalmas feldolgozó: Kezeli ha 1 elem jön ({}) és ha lista is ([{}])
+class FlexibleListDeserializer<T> : JsonDeserializer<List<T>> {
+    override fun deserialize(
+        json: JsonElement?,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): List<T> {
+        if (json == null || json.isJsonNull) return emptyList()
+        val list = mutableListOf<T>()
+        val itemType = (typeOfT as ParameterizedType).actualTypeArguments[0]
+
+        if (json.isJsonArray) {
+            for (element in json.asJsonArray) {
+                val item: T = context!!.deserialize(element, itemType)
+                list.add(item)
+            }
+        } else if (json.isJsonObject) {
+            val item: T = context!!.deserialize(json, itemType)
+            list.add(item)
+        }
+        return list
+    }
+}
 
 interface StatPalApiService {
     @GET("api/v2/soccer/matches/live")
@@ -52,10 +80,30 @@ interface StatPalApiService {
 object StatPalClient {
     private const val BASE_URL = "https://statpal.io/"
 
+    private inline fun <reified T> createListTypeToken(): Type {
+        return object : TypeToken<List<T>>() {}.type
+    }
+
+    private val gson: Gson = GsonBuilder()
+        .registerTypeAdapter(createListTypeToken<StatPalLeague>(), FlexibleListDeserializer<StatPalLeague>())
+        .registerTypeAdapter(createListTypeToken<StatPalMatch>(), FlexibleListDeserializer<StatPalMatch>())
+        .registerTypeAdapter(createListTypeToken<H2HMatch>(), FlexibleListDeserializer<H2HMatch>())
+        .registerTypeAdapter(createListTypeToken<InjuryLeague>(), FlexibleListDeserializer<InjuryLeague>())
+        .registerTypeAdapter(createListTypeToken<InjuryMatch>(), FlexibleListDeserializer<InjuryMatch>())
+        .registerTypeAdapter(createListTypeToken<InjuryPlayer>(), FlexibleListDeserializer<InjuryPlayer>())
+        .registerTypeAdapter(createListTypeToken<StandingTeam>(), FlexibleListDeserializer<StandingTeam>())
+        .registerTypeAdapter(createListTypeToken<PlayerLineup>(), FlexibleListDeserializer<PlayerLineup>())
+        .registerTypeAdapter(createListTypeToken<SidelinedLineupPlayer>(), FlexibleListDeserializer<SidelinedLineupPlayer>())
+        .registerTypeAdapter(createListTypeToken<OddsMatch>(), FlexibleListDeserializer<OddsMatch>())
+        .registerTypeAdapter(createListTypeToken<OddsMarket>(), FlexibleListDeserializer<OddsMarket>())
+        .registerTypeAdapter(createListTypeToken<BookmakerData>(), FlexibleListDeserializer<BookmakerData>())
+        .registerTypeAdapter(createListTypeToken<OddValue>(), FlexibleListDeserializer<OddValue>())
+        .create()
+
     val service: StatPalApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(StatPalApiService::class.java)
     }
