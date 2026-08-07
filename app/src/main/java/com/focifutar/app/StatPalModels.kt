@@ -1,10 +1,42 @@
 package com.focifutar.app
 
+import com.google.gson.*
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
+import java.lang.reflect.Type
 
-// ==========================================
-// 1. ÉLŐ MECCSEK (Get Matches Today / Live)
-// ==========================================
+// Deserializer: Átalakítja az 1 elemű objektumot ({}) is listává ([{}])
+class FlexibleMatchDeserializer : JsonDeserializer<List<StatPalMatch>> {
+    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): List<StatPalMatch> {
+        if (json == null || json.isJsonNull) return emptyList()
+        val list = mutableListOf<StatPalMatch>()
+        if (json.isJsonArray) {
+            json.asJsonArray.forEach { elem ->
+                context?.deserialize<StatPalMatch>(elem, StatPalMatch::class.java)?.let { list.add(it) }
+            }
+        } else if (json.isJsonObject) {
+            context?.deserialize<StatPalMatch>(json, StatPalMatch::class.java)?.let { list.add(it) }
+        }
+        return list
+    }
+}
+
+class FlexibleLeagueDeserializer : JsonDeserializer<List<StatPalLeague>> {
+    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): List<StatPalLeague> {
+        if (json == null || json.isJsonNull) return emptyList()
+        val list = mutableListOf<StatPalLeague>()
+        if (json.isJsonArray) {
+            json.asJsonArray.forEach { elem ->
+                context?.deserialize<StatPalLeague>(elem, StatPalLeague::class.java)?.let { list.add(it) }
+            }
+        } else if (json.isJsonObject) {
+            context?.deserialize<StatPalLeague>(json, StatPalLeague::class.java)?.let { list.add(it) }
+        }
+        return list
+    }
+}
+
+// 1. ÉLŐ MECCSEK
 data class StatPalResponse(
     @SerializedName("live_matches") val liveMatches: LiveMatchesData?
 )
@@ -12,7 +44,7 @@ data class StatPalResponse(
 data class LiveMatchesData(
     val updated: String?,
     @SerializedName("updated_ts") val updatedTs: Long?,
-    val league: List<StatPalLeague>?
+    @JsonAdapter(FlexibleLeagueDeserializer::class) val league: List<StatPalLeague>?
 )
 
 data class StatPalLeague(
@@ -20,7 +52,7 @@ data class StatPalLeague(
     val name: String?,
     val country: String?,
     val cup: String?,
-    val match: List<StatPalMatch>?
+    @JsonAdapter(FlexibleMatchDeserializer::class) val match: List<StatPalMatch>?
 )
 
 data class StatPalMatch(
@@ -38,9 +70,7 @@ data class StatPalTeam(
     val goals: String?
 )
 
-// ==========================================
-// 2. EGYMÁS ELLENI (Head To Head)
-// ==========================================
+// 2. EGYMÁS ELLENI (H2H)
 data class StatPalH2HResponse(
     @SerializedName("head-to-head") val headToHead: StatPalH2HData?
 )
@@ -65,9 +95,7 @@ data class H2HMatch(
     @SerializedName("team2_score") val team2Score: String?
 )
 
-// ==========================================
-// 3. HIÁNYZÓK (Injuries & Suspensions)
-// ==========================================
+// 3. HIÁNYZÓK
 data class StatPalInjuriesResponse(
     @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuriesData?
 )
@@ -111,9 +139,7 @@ data class InjuryPlayer(
     val status: String?
 )
 
-// ==========================================
-// 4. TABELLA (Standings)
-// ==========================================
+// 4. TABELLA
 data class StatPalStandingsResponse(
     val standings: StandingsWrapper?
 )
@@ -153,9 +179,7 @@ data class TotalStats(
     val points: String?
 )
 
-// ==========================================
-// 5. KEZDŐCSAPATOK (Team Lineups)
-// ==========================================
+// 5. KEZDŐCSAPATOK
 data class StatPalLineupResponse(
     @SerializedName("main_id") val mainId: String?,
     val status: String?,
@@ -195,9 +219,7 @@ data class SidelinedLineupPlayer(
     val reason: String?
 )
 
-// ==========================================
-// 6. ODDAK (Pre-Match Odds)
-// ==========================================
+// 6. ODDAK
 data class StatPalOddsResponse(
     @SerializedName("prematch_odds") val prematchOdds: PrematchOddsData?
 )
@@ -238,9 +260,7 @@ data class OddValue(
     val value: String?
 )
 
-// ==========================================
-// 7. AI TIPPEK (Match Prediction)
-// ==========================================
+// 7. AI TIPPEK
 data class StatPalPredictionResponse(
     val meta: PredictionMeta?,
     val prediction: PredictionData?
