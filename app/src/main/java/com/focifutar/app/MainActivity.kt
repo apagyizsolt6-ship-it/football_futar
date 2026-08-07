@@ -27,7 +27,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import io.coil-kt.compose.AsyncImage
+import coil.compose.AsyncImage
 
 // Színpaletta
 val BackgroundDark = Color(0xFF101214)
@@ -36,7 +36,34 @@ val AccentGreen = Color(0xFF00FF66)
 val AccentRed = Color(0xFFFF3366)
 val TextWhite = Color(0xFFFFFFFF)
 val TextMuted = Color(0xFF8C96A0)
-val ProgressTrack = Color(0xFF2A2E35)
+
+data class Team(
+    val id: String,
+    val name: String,
+    val logoUrl: String
+)
+
+data class Match(
+    val id: String,
+    val homeTeam: Team,
+    val awayTeam: Team,
+    val homeScore: Int,
+    val awayScore: Int,
+    val timeStatus: String,
+    val isLive: Boolean,
+    val homePossession: Int = 50,
+    val awayPossession: Int = 50,
+    val homeShots: Int = 0,
+    val awayShots: Int = 0,
+    val homeXG: String = "0.0",
+    val awayXG: String = "0.0"
+)
+
+data class LeagueGroup(
+    val leagueName: String,
+    val countryFlag: String,
+    val matches: List<Match>
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +72,6 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 val navController = rememberNavController()
                 
-                // Minta adatok (StatPal API-ból jönnek majd)
                 val mockData = listOf(
                     LeagueGroup(
                         leagueName = "Premier League",
@@ -89,7 +115,6 @@ fun MatchesListScreen(leagues: List<LeagueGroup>, navController: NavController) 
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        // Felső Fejléc & Dátumválasztó Bar
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "FOOTBALL FUTÁR",
@@ -120,7 +145,6 @@ fun MatchesListScreen(leagues: List<LeagueGroup>, navController: NavController) 
             }
         }
 
-        // Bajnokságok és meccsek listája
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
@@ -176,7 +200,6 @@ fun MatchRow(match: Match, onClick: () -> Unit) {
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Idő / Állapot
             Text(
                 text = match.timeStatus,
                 color = if (match.isLive) AccentRed else TextMuted,
@@ -185,14 +208,12 @@ fun MatchRow(match: Match, onClick: () -> Unit) {
                 modifier = Modifier.width(45.dp)
             )
 
-            // Csapatok & Címerek
             Column(modifier = Modifier.weight(1f)) {
                 TeamItem(match.homeTeam)
                 Spacer(modifier = Modifier.height(6.dp))
                 TeamItem(match.awayTeam)
             }
 
-            // Eredmény
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = "${match.homeScore}",
@@ -240,7 +261,6 @@ fun MatchDetailScreen(match: Match, navController: NavController) {
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        // Fejléc vissza gombbal
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -253,7 +273,6 @@ fun MatchDetailScreen(match: Match, navController: NavController) {
             )
         }
 
-        // Scoreboard Kártya
         Card(
             colors = CardDefaults.cardColors(containerColor = CardBackground),
             modifier = Modifier
@@ -289,7 +308,6 @@ fun MatchDetailScreen(match: Match, navController: NavController) {
             }
         }
 
-        // Tabok
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = CardBackground,
@@ -304,7 +322,6 @@ fun MatchDetailScreen(match: Match, navController: NavController) {
             }
         }
 
-        // Tab Tartalmak
         if (selectedTab == 1) {
             Column(modifier = Modifier.padding(16.dp)) {
                 StatBar("Labdabirtoklás (%)", match.homePossession, match.awayPossession)
