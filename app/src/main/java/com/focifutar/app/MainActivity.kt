@@ -58,7 +58,7 @@ fun getApiKey(context: Context): String {
 
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
-    var name = leagueName
+    var result: String = leagueName
 
     val countries = mapOf(
         "ENGLAND" to "ANGLIA",
@@ -114,19 +114,19 @@ fun translateLeagueName(leagueName: String?): String {
         "WORLD CUP" to "VILÁGBAJNOKSÁG"
     )
 
-    countries.forEach { (en, hu) ->
-        if (name.startsWith("$en:", ignoreCase = true)) {
-            name = hu + name.substring(en.length)
-        } else if (name.startsWith("$en ", ignoreCase = true)) {
-            name = hu + name.substring(en.length)
+    for ((en, hu) in countries) {
+        if (result.startsWith("$en:", ignoreCase = true)) {
+            result = hu + result.substring(en.length)
+        } else if (result.startsWith("$en ", ignoreCase = true)) {
+            result = hu + result.substring(en.length)
         }
     }
 
-    terms.forEach { (en, hu) ->
-        name = name.replace(Regex("(?i)" + Regex.escape(en)), hu)
+    for ((en, hu) in terms) {
+        result = result.replace(Regex("(?i)" + Regex.escape(en)), hu)
     }
 
-    return name
+    return result
 }
 
 fun translateStatus(status: String?): String {
@@ -153,7 +153,7 @@ fun translatePosition(pos: String?): String {
 
 fun translateInjuryStatus(status: String?): String {
     if (status.isNullOrBlank()) return ""
-    var s = status
+    var result: String = status
     val translations = mapOf(
         "hamstring injury" to "Combhajlító-sérülés",
         "knee injury" to "Térdsérülés",
@@ -166,12 +166,12 @@ fun translateInjuryStatus(status: String?): String {
         "doubtful" to "Kérdéses",
         "out" to "Kimarad"
     )
-    translations.forEach { (en, hu) ->
-        if (s.lowercase().contains(en)) {
-            s = s.replace(Regex("(?i)" + Regex.escape(en)), hu)
+    for ((en, hu) in translations) {
+        if (result.lowercase().contains(en)) {
+            result = result.replace(Regex("(?i)" + Regex.escape(en)), hu)
         }
     }
-    return s
+    return result
 }
 
 fun translateChoice(choice: String?): String {
@@ -188,7 +188,7 @@ fun translateChoice(choice: String?): String {
 
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
-    var t = text
+    var result: String = text
     val replacements = mapOf(
         "is playing at home with a fully fit squad" to "hazai pályán játszik teljes kerettel",
         "aims to bounce back" to "javítani szeretne",
@@ -209,10 +209,10 @@ fun translateReasoning(text: String?): String {
         "lacks injuries" to "nincsenek sérültjei",
         "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában"
     )
-    replacements.forEach { (en, hu) ->
-        t = t?.replace(Regex("(?i)" + Regex.escape(en)), hu)
+    for ((en, hu) in replacements) {
+        result = result.replace(Regex("(?i)" + Regex.escape(en)), hu)
     }
-    return t ?: "-"
+    return result
 }
 
 fun isAllowedLeague(leagueName: String?): Boolean {
