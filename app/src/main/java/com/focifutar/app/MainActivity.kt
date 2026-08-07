@@ -52,7 +52,169 @@ fun getApiKey(context: Context): String {
     return prefs.getString("statpal_api_key", "")?.trim() ?: ""
 }
 
-// Bajnokságok szűrése (Női, Utánpótlás és 3. osztály alatti ligák kiszűrése)
+// ==========================================
+// MAGYAROSÍTÓ HELPER FÜGGVÉNYEK
+// ==========================================
+
+fun translateLeagueName(leagueName: String?): String {
+    if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
+    var name = leagueName
+
+    val countries = mapOf(
+        "ENGLAND" to "ANGLIA",
+        "SPAIN" to "SPANYOLORSZÁG",
+        "GERMANY" to "NÉMETORSZÁG",
+        "ITALY" to "OLASZORSZÁG",
+        "FRANCE" to "FRANCIAORSZÁG",
+        "HUNGARY" to "MAGYARORSZÁG",
+        "AUSTRIA" to "AUSZTRIA",
+        "BRAZIL" to "BRAZÍLIA",
+        "ARGENTINA" to "ARGENTÍNA",
+        "NETHERLANDS" to "HOLLANDIA",
+        "PORTUGAL" to "PORTUGÁLIA",
+        "BELGIUM" to "BELGIUM",
+        "TURKEY" to "TÖRÖKORSZÁG",
+        "DENMARK" to "DÁNIA",
+        "AUSTRALIA" to "AUSZTRÁLIA",
+        "BOLIVIA" to "BOLÍVIA",
+        "BOSNIA AND HERZEGOVINA" to "BOSZNIA-HERCEGOVINA",
+        "ECUADOR" to "ECUADOR",
+        "ESTONIA" to "ÉSZTORSZÁG",
+        "BHUTAN" to "BHUTÁN",
+        "CROATIA" to "HORVÁTORSZÁG",
+        "SERBIA" to "SZERBIA",
+        "POLAND" to "LENGYELORSZÁG",
+        "CZECH REPUBLIC" to "CSEHORSZÁG",
+        "SLOVAKIA" to "SZLOVÁKIA",
+        "ROMANIA" to "ROMÁNIA",
+        "BULGARIA" to "BULGÁRIA",
+        "GREECE" to "GÖRÖGORSZÁG",
+        "SWITZERLAND" to "SVÁJC",
+        "SWEDEN" to "SVÉDORSZÁG",
+        "NORWAY" to "NORVÉGIA",
+        "FINLAND" to "FINNORSZÁG",
+        "UKRAINE" to "UKRAJNA",
+        "AFRICA" to "AFRIKA",
+        "ASIA" to "ÁZSIA",
+        "EUROPE" to "EURÓPA",
+        "WORLD" to "VILÁG",
+        "SOUTH AMERICA" to "DÉL-AMERIKA",
+        "NORTH & CENTRAL AMERICA" to "ÉSZAK- ÉS KÖZÉP-AMERIKA"
+    )
+
+    val terms = mapOf(
+        "PLAY OFFS" to "RÁJÁTSZÁS",
+        "PLAY-OFFS" to "RÁJÁTSZÁS",
+        "PLACEMENT MATCHES" to "HELYOSZTÓK",
+        "WINNERS STAGE" to "GYŐZTESEK SZAKASZA",
+        "CHAMPIONS LEAGUE" to "BAJNOKOK LIGÁJA",
+        "EUROPA LEAGUE" to "EURÓPA-LIGA",
+        "CONFERENCE LEAGUE" to "KONFERENCIA LIGA",
+        "FRIENDLIES" to "BARÁTSÁGOS",
+        "WORLD CUP" to "VILÁGBAJNOKSÁG"
+    )
+
+    countries.forEach { (en, hu) ->
+        if (name.startsWith("$en:", ignoreCase = true)) {
+            name = hu + name.substring(en.length)
+        } else if (name.startsWith("$en ", ignoreCase = true)) {
+            name = hu + name.substring(en.length)
+        }
+    }
+
+    terms.forEach { (en, hu) ->
+        name = name.replace(Regex("(?i)" + Regex.escape(en)), hu)
+    }
+
+    return name
+}
+
+fun translateStatus(status: String?): String {
+    if (status.isNullOrBlank()) return ""
+    return when (status.uppercase().trim()) {
+        "FT" -> "VÉGE"
+        "HT" -> "FÉLIDŐ"
+        "POSTPONED" -> "ELHALASZTVA"
+        "CANCELLED" -> "ELMARADT"
+        else -> status
+    }
+}
+
+fun translatePosition(pos: String?): String {
+    if (pos.isNullOrBlank()) return ""
+    return when (pos.lowercase().trim()) {
+        "goalkeeper" -> "Kapus"
+        "defender" -> "Védő"
+        "midfielder" -> "Középpályás"
+        "attacker", "forward" -> "Támadó"
+        else -> pos
+    }
+}
+
+fun translateInjuryStatus(status: String?): String {
+    if (status.isNullOrBlank()) return ""
+    var s = status
+    val translations = mapOf(
+        "hamstring injury" to "Combhajlító-sérülés",
+        "knee injury" to "Térdsérülés",
+        "ankle injury" to "Bokasérülés",
+        "shoulder injury" to "Vállsérülés",
+        "heel injury" to "Sarksérülés",
+        "yellow cards" to "Sárga lapos eltiltás",
+        "inactive" to "Inaktív",
+        "injury" to "Sérülés",
+        "doubtful" to "Kérdéses",
+        "out" to "Kimarad"
+    )
+    translations.forEach { (en, hu) ->
+        if (s.lowercase().contains(en)) {
+            s = s.replace(Regex("(?i)" + Regex.escape(en)), hu)
+        }
+    }
+    return s
+}
+
+fun translateChoice(choice: String?): String {
+    if (choice.isNullOrBlank()) return "-"
+    val c = choice.trim()
+    return when {
+        c.equals("Home win", ignoreCase = true) || c.equals("Home to win", ignoreCase = true) -> "Hazai győzelem"
+        c.equals("Away win", ignoreCase = true) || c.equals("Away to win", ignoreCase = true) -> "Vendég győzelem"
+        c.equals("Draw", ignoreCase = true) -> "Döntetlen"
+        c.lowercase().endsWith(" to win") -> "${c.substring(0, c.length - 7)} győzelme"
+        else -> c
+    }
+}
+
+fun translateReasoning(text: String?): String {
+    if (text.isNullOrBlank()) return "-"
+    var t = text
+    val replacements = mapOf(
+        "is playing at home with a fully fit squad" to "hazai pályán játszik teljes kerettel",
+        "aims to bounce back" to "javítani szeretne",
+        "after an opening day loss" to "a nyitófordulós vereség után",
+        "despite a stable lineup" to "a stabil felállás ellenére",
+        "has shown defensive vulnerabilities" to "védelmi sebezhetőséget mutatott",
+        "has a less favorable away record" to "gyengébb vendégmérleggel rendelkezik",
+        "holds an unbeaten record" to "veretlen sorozattal bír",
+        "in their last five matches against" to "a legutóbbi 5 egymás elleni meccsen",
+        "the market odds favor" to "a fogadási oddsok a következőt favorizálják:",
+        "a home win with a reasonable margin" to "meggyőző hazai győzelem",
+        "home win" to "hazai győzelem",
+        "away win" to "vendég győzelem",
+        "draw" to "döntetlen",
+        "recent head-to-head win" to "legutóbbi egymás elleni győzelem",
+        "shows stronger form" to "jobb formát mutat",
+        "key attacking players fit and motivated" to "a kulcsfontosságú támadók fittek és motiváltak",
+        "lacks injuries" to "nincsenek sérültjei",
+        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában"
+    )
+    replacements.forEach { (en, hu) ->
+        t = t?.replace(Regex("(?i)" + Regex.escape(en)), hu)
+    }
+    return t ?: "-"
+}
+
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
     val nameLower = leagueName.lowercase()
@@ -68,10 +230,10 @@ fun isAllowedLeague(leagueName: String?): Boolean {
     return forbiddenKeywords.none { nameLower.contains(it) }
 }
 
-// UTC kezdési időpont átalakítása a telefon helyi időzónájára
 fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
     if (timeStr.isNullOrBlank()) return ""
-    if (!timeStr.contains(":")) return timeStr // Élő állapotok (pl. FT, HT, 67') változatlanul maradnak
+    val translatedTime = translateStatus(timeStr)
+    if (!translatedTime.contains(":")) return translatedTime
 
     return try {
         val datePart = if (!dateStr.isNullOrBlank()) dateStr else "01.01.2026"
@@ -82,9 +244,9 @@ fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
         val localFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
             timeZone = TimeZone.getDefault()
         }
-        if (parsedDate != null) localFormat.format(parsedDate) else timeStr
+        if (parsedDate != null) localFormat.format(parsedDate) else translatedTime
     } catch (e: Exception) {
-        timeStr
+        translatedTime
     }
 }
 
@@ -137,8 +299,6 @@ fun MatchesListScreen(navController: NavController) {
                 try {
                     val response = StatPalClient.service.getLiveMatches(apiKey)
                     val rawLeagues = response.liveMatches?.league ?: emptyList()
-                    
-                    // Ligák szűrése (csak a főbb bajnokságok)
                     leagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                     if (leagues.isEmpty()) {
@@ -162,7 +322,6 @@ fun MatchesListScreen(navController: NavController) {
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        // Fejléc ÉS Akció gombok
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -178,7 +337,6 @@ fun MatchesListScreen(navController: NavController) {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // 📁 / 📂 Összes bajnokság kinyitása / becsukása gomb
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -195,7 +353,6 @@ fun MatchesListScreen(navController: NavController) {
                     Text(text = if (collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 16.sp)
                 }
 
-                // 🔄 Frissítés gomb
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -206,7 +363,6 @@ fun MatchesListScreen(navController: NavController) {
                     Text(text = "🔄", fontSize = 16.sp)
                 }
 
-                // ⚙️ Beállítások gomb
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -248,7 +404,7 @@ fun MatchesListScreen(navController: NavController) {
 
                     item {
                         LeagueHeader(
-                            title = league.name ?: "Ismeretlen bajnokság",
+                            title = translateLeagueName(league.name),
                             isCollapsed = isCollapsed,
                             onToggle = {
                                 collapsedLeagueIds = if (isCollapsed) {
@@ -307,8 +463,9 @@ fun LeagueHeader(title: String, isCollapsed: Boolean, onToggle: () -> Unit) {
 
 @Composable
 fun MatchRow(match: StatPalMatch, onClick: () -> Unit) {
-    val isLive = match.status != "FT" && match.status != "CANCELLED" && match.status != "POSTPONED"
-    val formattedTime = formatToLocalTime(match.date, match.status ?: match.time ?: "")
+    val rawStatus = match.status ?: match.time ?: ""
+    val isLive = rawStatus != "FT" && rawStatus != "CANCELLED" && rawStatus != "POSTPONED"
+    val formattedTime = formatToLocalTime(match.date, rawStatus)
 
     Card(
         colors = CardDefaults.cardColors(containerColor = BackgroundDark),
@@ -573,10 +730,21 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("VÁRHATÓ KIMENETEL", color = AccentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text(predictionData?.choice ?: "-", color = AccentGreen, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.padding(vertical = 4.dp))
+                            Text(
+                                text = translateChoice(predictionData?.choice),
+                                color = AccentGreen,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 18.sp,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("ELEMZÉS & INDOKLÁS", color = TextMuted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text(predictionData?.reasoning ?: "-", color = TextWhite, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                            Text(
+                                text = translateReasoning(predictionData?.reasoning),
+                                color = TextWhite,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }
@@ -605,7 +773,7 @@ fun LineupSection(lineup: LineupTeam?) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("${player.number ?: ""}. ${player.name ?: ""}", color = TextWhite, fontSize = 13.sp)
-                Text(player.position?.uppercase() ?: "", color = TextMuted, fontSize = 11.sp)
+                Text(translatePosition(player.position).uppercase(), color = TextMuted, fontSize = 11.sp)
             }
         }
     }
@@ -623,10 +791,10 @@ fun TeamInjuriesSection(teamName: String, sidelined: SidelinedData?) {
             Text("Nincs bejelentett hiányzó.", color = TextMuted, fontSize = 12.sp)
         } else {
             toMiss.forEach { player ->
-                PlayerInjuryRow(player.name ?: "", player.status ?: "", isQuestionable = false)
+                PlayerInjuryRow(player.name ?: "", translateInjuryStatus(player.status), isQuestionable = false)
             }
             questionable.forEach { player ->
-                PlayerInjuryRow(player.name ?: "", player.status ?: "", isQuestionable = true)
+                PlayerInjuryRow(player.name ?: "", translateInjuryStatus(player.status), isQuestionable = true)
             }
         }
     }
