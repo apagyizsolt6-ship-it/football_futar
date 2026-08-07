@@ -1,29 +1,268 @@
 package com.focifutar.app
 
-data class Team(
-    val id: String,
-    val name: String,
-    val logoUrl: String
+import com.google.gson.annotations.SerializedName
+
+// ==========================================
+// 1. ÉLŐ MECCSEK (Get Matches Today / Live)
+// ==========================================
+data class StatPalResponse(
+    @SerializedName("live_matches") val liveMatches: LiveMatchesData?
 )
 
-data class Match(
-    val id: String,
-    val homeTeam: Team,
-    val awayTeam: Team,
-    val homeScore: Int,
-    val awayScore: Int,
-    val timeStatus: String, // pl. '67, FT, 20:45
-    val isLive: Boolean,
-    val homePossession: Int = 50,
-    val awayPossession: Int = 50,
-    val homeShots: Int = 0,
-    val awayShots: Int = 0,
-    val homeXG: String = "0.0",
-    val awayXG: String = "0.0"
+data class LiveMatchesData(
+    val updated: String?,
+    @SerializedName("updated_ts") val updatedTs: Long?,
+    val league: List<StatPalLeague>?
 )
 
-data class LeagueGroup(
-    val leagueName: String,
-    val countryFlag: String,
-    val matches: List<Match>
+data class StatPalLeague(
+    val id: String?,
+    val name: String?,
+    val country: String?,
+    val cup: String?,
+    val match: List<StatPalMatch>?
+)
+
+data class StatPalMatch(
+    @SerializedName("main_id") val mainId: String?,
+    val status: String?,
+    val date: String?,
+    val time: String?,
+    val home: StatPalTeam?,
+    val away: StatPalTeam?
+)
+
+data class StatPalTeam(
+    val id: String?,
+    val name: String?,
+    val goals: String?
+)
+
+// ==========================================
+// 2. EGYMÁS ELLENI (Head To Head)
+// ==========================================
+data class StatPalH2HResponse(
+    @SerializedName("head-to-head") val headToHead: StatPalH2HData?
+)
+
+data class StatPalH2HData(
+    @SerializedName("team1_id") val team1Id: String?,
+    @SerializedName("team2_id") val team2Id: String?,
+    @SerializedName("recent_meetings") val recentMeetings: H2HMatchList?
+)
+
+data class H2HMatchList(
+    val match: List<H2HMatch>?
+)
+
+data class H2HMatch(
+    @SerializedName("main_id") val mainId: String?,
+    val date: String?,
+    val league: String?,
+    @SerializedName("team1_name") val team1Name: String?,
+    @SerializedName("team2_name") val team2Name: String?,
+    @SerializedName("team1_score") val team1Score: String?,
+    @SerializedName("team2_score") val team2Score: String?
+)
+
+// ==========================================
+// 3. HIÁNYZÓK (Injuries & Suspensions)
+// ==========================================
+data class StatPalInjuriesResponse(
+    @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuriesData?
+)
+
+data class InjuriesData(
+    val updated: String?,
+    val league: List<InjuryLeague>?
+)
+
+data class InjuryLeague(
+    val id: String?,
+    val name: String?,
+    val match: List<InjuryMatch>?
+)
+
+data class InjuryMatch(
+    @SerializedName("main_id") val mainId: String?,
+    val date: String?,
+    val home: InjuryTeam?,
+    val away: InjuryTeam?
+)
+
+data class InjuryTeam(
+    val id: String?,
+    val name: String?,
+    val sidelined: SidelinedData?
+)
+
+data class SidelinedData(
+    @SerializedName("to_miss") val toMiss: PlayerGroup?,
+    val questionable: PlayerGroup?
+)
+
+data class PlayerGroup(
+    val player: List<InjuryPlayer>?
+)
+
+data class InjuryPlayer(
+    val id: String?,
+    val name: String?,
+    val status: String?
+)
+
+// ==========================================
+// 4. TABELLA (Standings)
+// ==========================================
+data class StatPalStandingsResponse(
+    val standings: StandingsWrapper?
+)
+
+data class StandingsWrapper(
+    val country: String?,
+    val tournament: TournamentData?
+)
+
+data class TournamentData(
+    val id: String?,
+    val league: String?,
+    val season: String?,
+    val team: List<StandingTeam>?
+)
+
+data class StandingTeam(
+    val position: String?,
+    val name: String?,
+    val id: String?,
+    @SerializedName("recent_form") val recentForm: String?,
+    val overall: OverallStats?,
+    val total: TotalStats?
+)
+
+data class OverallStats(
+    @SerializedName("games_played") val gamesPlayed: String?,
+    val wins: String?,
+    val draws: String?,
+    val losses: String?,
+    @SerializedName("goals_scored") val goalsScored: String?,
+    @SerializedName("goals_allowed") val goalsAllowed: String?
+)
+
+data class TotalStats(
+    @SerializedName("goal_difference") val goalDifference: String?,
+    val points: String?
+)
+
+// ==========================================
+// 5. KEZDŐCSAPATOK (Team Lineups)
+// ==========================================
+data class StatPalLineupResponse(
+    @SerializedName("main_id") val mainId: String?,
+    val status: String?,
+    val home: LineupTeam?,
+    val away: LineupTeam?
+)
+
+data class LineupTeam(
+    @SerializedName("team_id") val teamId: String?,
+    @SerializedName("team_name") val teamName: String?,
+    val coach: CoachData?,
+    @SerializedName("team_formation") val teamFormation: String?,
+    @SerializedName("starting_xi") val startingXi: List<PlayerLineup>?,
+    val bench: List<PlayerLineup>?,
+    val sidelined: List<SidelinedLineupPlayer>?,
+    val confidence: Int?
+)
+
+data class CoachData(
+    val name: String?,
+    val id: String?
+)
+
+data class PlayerLineup(
+    val id: String?,
+    val name: String?,
+    val number: String?,
+    val position: String?
+)
+
+data class SidelinedLineupPlayer(
+    val id: String?,
+    val name: String?,
+    val number: String?,
+    val position: String?,
+    val status: String?,
+    val reason: String?
+)
+
+// ==========================================
+// 6. ODDAK (Pre-Match Odds)
+// ==========================================
+data class StatPalOddsResponse(
+    @SerializedName("prematch_odds") val prematchOdds: PrematchOddsData?
+)
+
+data class PrematchOddsData(
+    val league: OddsLeague?
+)
+
+data class OddsLeague(
+    val id: String?,
+    val name: String?,
+    val match: List<OddsMatch>?
+)
+
+data class OddsMatch(
+    @SerializedName("main_id") val mainId: String?,
+    val date: String?,
+    val time: String?,
+    val home: StatPalTeam?,
+    val away: StatPalTeam?,
+    val odds: List<OddsMarket>?
+)
+
+data class OddsMarket(
+    val id: String?,
+    val name: String?,
+    val bookmaker: List<BookmakerData>?
+)
+
+data class BookmakerData(
+    val id: String?,
+    val name: String?,
+    val odd: List<OddValue>?
+)
+
+data class OddValue(
+    val name: String?,
+    val value: String?
+)
+
+// ==========================================
+// 7. AI TIPPEK (Match Prediction)
+// ==========================================
+data class StatPalPredictionResponse(
+    val meta: PredictionMeta?,
+    val prediction: PredictionData?
+)
+
+data class PredictionMeta(
+    @SerializedName("main_id") val mainId: String?,
+    val date: String?,
+    val time: String?,
+    @SerializedName("home_team") val homeTeam: StatPalTeam?,
+    @SerializedName("away_team") val awayTeam: StatPalTeam?
+)
+
+data class PredictionData(
+    val choice: String?,
+    val reasoning: String?,
+    @SerializedName("prematch_odds") val prematchOdds: PredictionPrematchOdds?
+)
+
+data class PredictionPrematchOdds(
+    val market: String?,
+    val modifier: String?,
+    val selection: String?,
+    val odd: String?
 )
