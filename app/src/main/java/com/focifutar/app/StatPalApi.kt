@@ -9,10 +9,17 @@ import retrofit2.http.Query
 
 interface StatPalApiService {
 
-    // Élő és napi meccsek lekérése (opcionális dátum szűrővel)
+    // Élő és mai meccsek lekérése
     @Headers("Accept: application/json", "User-Agent: FootballFutar/1.0")
     @GET("api/v2/soccer/matches/live")
     suspend fun getLiveMatches(
+        @Query("access_key") accessKey: String
+    ): StatPalResponse
+
+    // Múltbeli és jövőbeli meccsek lekérése dátum alapján
+    @Headers("Accept: application/json", "User-Agent: FootballFutar/1.0")
+    @GET("api/v2/soccer/matches/recent-upcoming")
+    suspend fun getRecentUpcomingMatches(
         @Query("access_key") accessKey: String,
         @Query("date") date: String? = null
     ): StatPalResponse
