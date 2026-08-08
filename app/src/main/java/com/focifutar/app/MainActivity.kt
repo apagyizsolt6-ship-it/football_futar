@@ -74,7 +74,7 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
 }
 
 // ==========================================
-// CSAPAT LOGÓ COMPOSABLE 😁
+// CSAPAT LOGÓ COMPOSABLE
 // ==========================================
 @Composable
 fun TeamLogo(logoUrl: String?, teamName: String, modifier: Modifier = Modifier.size(20.dp)) {
@@ -220,7 +220,7 @@ fun translateLeagueName(leagueName: String?): String {
         "BELARUS" to "🇧🇾 FEHÉROROSZORSZÁG", "BELGIUM" to "🇧🇪 BELGIUM", "BHUTAN" to "🇧🇹 BHUTÁN", "BOLIVIA" to "🇧🇴 BOLÍVIA",
         "BOSNIA AND HERZEGOVINA" to "🇧🇦 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
         "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA", "COLOMBIA" to "🇨🇴 KOLUMBIA",
-        "CROATIA" to "🇭🇷 HORVÁTORSZÁG", "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨🇿 CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
+        "CROATIA" to "🇭🇷 HORVÁTORSZÁG", "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨ZEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
         "ECUADOR" to "🇪🇨 ECUADOR", "EGYPT" to "🇪🇬 EGYIPTOM", "ENGLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 ANGLIA", "ESTONIA" to "🇪🇪 ÉSZTORSZÁG",
         "EUROPE" to "🇪🇺 EURÓPA", "FAROE ISLANDS" to "🇫🇴 FERÖER", "FINLAND" to "🇫🇮 FINNORSZÁG", "FRANCE" to "🇫🇷 FRANCIAORSZÁG",
         "GEORGIA" to "🇬🇪 GRÚZIA", "GERMANY" to "🇩🇪 NÉMETORSZÁG", "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "HUNGARY" to "🇭🇺 MAGYARORSZÁG",
@@ -444,12 +444,22 @@ fun MatchesListScreen(navController: NavController) {
                     val rawLeagues = response.liveMatches?.league ?: emptyList()
 
                     leagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
-                        val matchesOnDate = league.match?.filter { match ->
+                        val matchesOnDate = league.match.filter { match ->
                             isMatchOnSelectedDate(match.date, selectedCalendar)
-                        } ?: emptyList()
+                        }
 
                         if (matchesOnDate.isNotEmpty()) {
-                            league.copy(match = matchesOnDate)
+                            league.copy(matchElement = null) // Reset to avoid raw JsonElement
+                        } else null
+                    }
+
+                    // Re-assign correctly mapped matches
+                    leagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
+                        val matchesOnDate = league.match.filter { match ->
+                            isMatchOnSelectedDate(match.date, selectedCalendar)
+                        }
+                        if (matchesOnDate.isNotEmpty()) {
+                            league
                         } else null
                     }
 
@@ -470,12 +480,12 @@ fun MatchesListScreen(navController: NavController) {
     }
 
     val totalLiveCount = remember(leagues) {
-        leagues.sumOf { league -> league.match?.count { isLiveMatch(it) } ?: 0 }
+        leagues.sumOf { league -> league.match.count { isLiveMatch(it) } }
     }
 
     val filteredLeagues = remember(leagues, isOnlyLiveFilter, searchQuery) {
         leagues.mapNotNull { league ->
-            val matches = league.match ?: emptyList()
+            val matches = league.match
             val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
             val matchesAfterSearch = if (searchQuery.isNotBlank()) {
                 val q = searchQuery.lowercase().trim()
@@ -486,13 +496,13 @@ fun MatchesListScreen(navController: NavController) {
                 }
             } else matchesAfterLive
 
-            if (matchesAfterSearch.isNotEmpty()) league.copy(match = matchesAfterSearch) else null
+            if (matchesAfterSearch.isNotEmpty()) league else null
         }
     }
 
     val favoriteMatchesList = remember(leagues, favoriteIds) {
         leagues.flatMap { league ->
-            (league.match ?: emptyList()).filter { match ->
+            league.match.filter { match ->
                 val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                 favoriteIds.contains(id)
             }
@@ -714,13 +724,13 @@ fun MatchesListScreen(navController: NavController) {
                     items(favoriteMatchesList) { match ->
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                         MatchRow(
-                            match = match,
-                            isFavorite = true,
-                            onToggleFavorite = {
+                            match,
+                            true,
+                            {
                                 toggleFavoriteMatch(context, matchId)
                                 favoriteIds = getFavoriteMatchIds(context)
                             },
-                            onClick = {
+                            {
                                 selectedMatchGlobal = match
                                 navController.navigate("match_detail")
                             }
@@ -747,18 +757,22 @@ fun MatchesListScreen(navController: NavController) {
                     }
 
                     if (!isCollapsed) {
-                        items(league.match ?: emptyList()) { match ->
+                        val matches = league.match.filter { match ->
+                            isMatchOnSelectedDate(match.date, selectedCalendar)
+                        }
+
+                        items(matches) { match ->
                             val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                             val isFav = favoriteIds.contains(matchId)
 
                             MatchRow(
-                                match = match,
-                                isFavorite = isFav,
-                                onToggleFavorite = {
+                                match,
+                                isFav,
+                                {
                                     toggleFavoriteMatch(context, matchId)
                                     favoriteIds = getFavoriteMatchIds(context)
                                 },
-                                onClick = {
+                                {
                                     selectedMatchGlobal = match
                                     navController.navigate("match_detail")
                                 }
