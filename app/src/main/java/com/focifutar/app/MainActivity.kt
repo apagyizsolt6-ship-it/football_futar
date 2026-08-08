@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,6 +31,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -72,7 +74,36 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
 }
 
 // ==========================================
-// DÁTUM HELPEREK ÉS SZŰRÉS
+// CSAPAT LOGÓ COMPOSABLE 😁
+// ==========================================
+@Composable
+fun TeamLogo(logoUrl: String?, teamName: String, modifier: Modifier = Modifier.size(20.dp)) {
+    if (!logoUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = logoUrl,
+            contentDescription = teamName,
+            contentScale = ContentScale.Fit,
+            modifier = modifier.clip(CircleShape)
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .clip(CircleShape)
+                .background(CardBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = teamName.take(1).uppercase(),
+                color = AccentGreen,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+// ==========================================
+// DÁTUM HELPEREK ÉS SZIGORÚ SZŰRÉS
 // ==========================================
 fun formatDateForApi(cal: Calendar): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
@@ -94,23 +125,39 @@ fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
         return isToday(targetCal)
     }
 
+    val targetY = targetCal.get(Calendar.YEAR)
+    val targetM = targetCal.get(Calendar.MONTH)
+    val targetD = targetCal.get(Calendar.DAY_OF_MONTH)
+
+    val cleanDate = matchDateStr.trim()
+
     val formats = listOf(
         SimpleDateFormat("dd.MM.yyyy", Locale.US),
+        SimpleDateFormat("yyyy-MM-dd", Locale.US),
         SimpleDateFormat("dd-MM-yyyy", Locale.US),
-        SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        SimpleDateFormat("MM/dd/yyyy", Locale.US)
     )
 
     for (sdf in formats) {
         try {
-            val parsedDate = sdf.parse(matchDateStr.trim())
+            val parsedDate = sdf.parse(cleanDate)
             if (parsedDate != null) {
                 val matchCal = Calendar.getInstance().apply { time = parsedDate }
-                return matchCal.get(Calendar.YEAR) == targetCal.get(Calendar.YEAR) &&
-                       matchCal.get(Calendar.DAY_OF_YEAR) == targetCal.get(Calendar.DAY_OF_YEAR)
+                return (matchCal.get(Calendar.YEAR) == targetY &&
+                        matchCal.get(Calendar.MONTH) == targetM &&
+                        matchCal.get(Calendar.DAY_OF_MONTH) == targetD)
             }
         } catch (_: Exception) {}
     }
-    return isToday(targetCal)
+
+    val targetDDS = String.format("%02d.%02d.%04d", targetD, targetM + 1, targetY)
+    val targetISO = String.format("%04d-%02d-%02d", targetY, targetM + 1, targetD)
+
+    if (cleanDate.contains(targetDDS) || cleanDate.contains(targetISO)) {
+        return true
+    }
+
+    return false
 }
 
 // ==========================================
@@ -127,7 +174,7 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 // ==========================================
-// SZIGORÚ LIGA SZŰRŐ
+// KISZŰRT AMATŐR & ALSÓBB LIGÁK SZIGORÚ LISTÁJA
 // ==========================================
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
@@ -136,13 +183,21 @@ fun isAllowedLeague(leagueName: String?): Boolean {
     val forbiddenKeywords = listOf(
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
         "u17", "u18", "u19", "u20", "u21", "u23", "youth", "junior", "u-19", "u-21",
-        "reserve", "reserves", "(am)", "b-team", "b team",
+        "reserve", "reserves", "(am)", "b-team", "b team", "sub-20", "sub-17",
         "3rd division", "4th division", "5th division", "3. liga", "4. liga", "5. liga",
+        "division 2", "division 3", "division 4", "division 5",
         "3. cfl", "3. msfl", "msfl", "cfl", "kakkonen", "ykkonen", "ykkosliiga",
         "regionalliga", "oberliga", "landesliga", "amateur", "promocional",
-        "primera c", "primera d", "primera b", "torneo federal", "state league",
+        "primera c", "primera d", "torneo federal", "state league",
         "npl", "ligue 3", "gaucho 2", "amazonense 2", "vtora liga", "expansion mx",
-        "calcutta", "durand cup", "cecafa", "division 1"
+        "calcutta", "durand cup", "cecafa", "1.liga classic", "promotion league",
+        "druha liga", "persha liga", "segunda division", "usl championship",
+        "mls next pro", "usl league one", "cymru south", "cymru north",
+        "prva liga", "2. snl", "nb ii", "nb iii", "iii liga", "fnl 2",
+        "national league", "southern league", "isthmian", "serie c", "serie d",
+        "capixaba", "cearense", "goiano", "mineiro", "paranaense", "copa paulista",
+        "copa governo", "esiliiga", "nakotnes", "i lyga", "league one", "league two",
+        "nifl championship", "liga 3", "division 1"
     )
 
     return forbiddenKeywords.none { nameLower.contains(it) }
@@ -789,13 +844,39 @@ fun MatchRow(
                 color = if (live) AccentRed else TextMuted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.width(55.dp)
+                modifier = Modifier.width(50.dp)
             )
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = match.home?.name ?: "-", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TeamLogo(
+                        logoUrl = match.home?.logo ?: match.home?.image,
+                        teamName = match.home?.name ?: ""
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = match.home?.name ?: "-",
+                        color = TextWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = match.away?.name ?: "-", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TeamLogo(
+                        logoUrl = match.away?.logo ?: match.away?.image,
+                        teamName = match.away?.name ?: ""
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = match.away?.name ?: "-",
+                        color = TextWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -926,9 +1007,19 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(match.home?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        TeamLogo(logoUrl = match.home?.logo ?: match.home?.image, teamName = match.home?.name ?: "", modifier = Modifier.size(36.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(match.home?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
                     Text("${match.home?.goals ?: "0"} - ${match.away?.goals ?: "0"}", color = AccentGreen, fontSize = 28.sp, fontWeight = FontWeight.Black)
-                    Text(match.away?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        TeamLogo(logoUrl = match.away?.logo ?: match.away?.image, teamName = match.away?.name ?: "", modifier = Modifier.size(36.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(match.away?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
                 }
             }
         }
