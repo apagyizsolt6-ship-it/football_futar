@@ -72,7 +72,7 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
 }
 
 // ==========================================
-// DÁTUM HELPEREK
+// DÁTUM HELPEREK ÉS SZŰRÉS
 // ==========================================
 fun formatDateForApi(cal: Calendar): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
@@ -87,6 +87,30 @@ fun isToday(cal: Calendar): Boolean {
     val today = Calendar.getInstance()
     return cal.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
            cal.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
+}
+
+fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
+    if (matchDateStr.isNullOrBlank()) {
+        return isToday(targetCal)
+    }
+
+    val formats = listOf(
+        SimpleDateFormat("dd.MM.yyyy", Locale.US),
+        SimpleDateFormat("dd-MM-yyyy", Locale.US),
+        SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    )
+
+    for (sdf in formats) {
+        try {
+            val parsedDate = sdf.parse(matchDateStr.trim())
+            if (parsedDate != null) {
+                val matchCal = Calendar.getInstance().apply { time = parsedDate }
+                return matchCal.get(Calendar.YEAR) == targetCal.get(Calendar.YEAR) &&
+                       matchCal.get(Calendar.DAY_OF_YEAR) == targetCal.get(Calendar.DAY_OF_YEAR)
+            }
+        } catch (_: Exception) {}
+    }
+    return isToday(targetCal)
 }
 
 // ==========================================
@@ -125,7 +149,7 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 }
 
 // ==========================================
-// MAGYAROSÍTÓ & ZÁSZLÓ HELPEREK
+// MAGYAROSÍTÓ HELPEREK
 // ==========================================
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
@@ -351,13 +375,31 @@ fun MatchesListScreen(navController: NavController) {
             coroutineScope.launch {
                 try {
                     val dateParam = formatDateForApi(selectedCalendar)
-                    val response = StatPalClient.service.getLiveMatches(apiKey, dateParam)
+
+                    val response = if (isToday(selectedCalendar)) {
+                        StatPalClient.service.getLiveMatches(apiKey, dateParam)
+                    } else {
+                        try {
+                            StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                        } catch (_: Exception) {
+                            StatPalClient.service.getLiveMatches(apiKey, dateParam)
+                        }
+                    }
+
                     val rawLeagues = response.liveMatches?.league ?: emptyList()
 
-                    leagues = rawLeagues.filter { isAllowedLeague(it.name) }
+                    leagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
+                        val matchesOnDate = league.match?.filter { match ->
+                            isMatchOnSelectedDate(match.date, selectedCalendar)
+                        } ?: emptyList()
+
+                        if (matchesOnDate.isNotEmpty()) {
+                            league.copy(match = matchesOnDate)
+                        } else null
+                    }
 
                     if (leagues.isEmpty()) {
-                        errorMessage = "Ezen a napon nincsenek kiemelt meccsek."
+                        errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
                     }
                 } catch (e: Exception) {
                     errorMessage = "Hiba a kapcsolódáskor: ${e.localizedMessage}"
@@ -376,7 +418,6 @@ fun MatchesListScreen(navController: NavController) {
         leagues.sumOf { league -> league.match?.count { isLiveMatch(it) } ?: 0 }
     }
 
-    // Keresés és Élő szűrés alkalmazása
     val filteredLeagues = remember(leagues, isOnlyLiveFilter, searchQuery) {
         leagues.mapNotNull { league ->
             val matches = league.match ?: emptyList()
@@ -394,7 +435,6 @@ fun MatchesListScreen(navController: NavController) {
         }
     }
 
-    // Kedvenc meccsek kigyűjtése
     val favoriteMatchesList = remember(leagues, favoriteIds) {
         leagues.flatMap { league ->
             (league.match ?: emptyList()).filter { match ->
@@ -409,7 +449,6 @@ fun MatchesListScreen(navController: NavController) {
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        // ================= HEADER =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -425,7 +464,6 @@ fun MatchesListScreen(navController: NavController) {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                // KERESŐ TOGGLE GOMB
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -436,7 +474,6 @@ fun MatchesListScreen(navController: NavController) {
                     Text(text = "🔍", fontSize = 14.sp)
                 }
 
-                // ÉLŐ SZŰRŐ GOMB
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
@@ -456,7 +493,6 @@ fun MatchesListScreen(navController: NavController) {
                     }
                 }
 
-                // KERESŐ / ÖSSZECSUKÓ GOMB
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -473,7 +509,6 @@ fun MatchesListScreen(navController: NavController) {
                     Text(text = if (collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 14.sp)
                 }
 
-                // FRISSÍTÉS GOMB
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -484,7 +519,6 @@ fun MatchesListScreen(navController: NavController) {
                     Text(text = "🔄", fontSize = 14.sp)
                 }
 
-                // BEÁLLÍTÁSOK GOMB
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -497,7 +531,6 @@ fun MatchesListScreen(navController: NavController) {
             }
         }
 
-        // ================= KERESŐSÁV =================
         if (isSearchOpen) {
             OutlinedTextField(
                 value = searchQuery,
@@ -518,7 +551,6 @@ fun MatchesListScreen(navController: NavController) {
             )
         }
 
-        // ================= DÁTUM VÁLASZTÓ SÁV =================
         Card(
             colors = CardDefaults.cardColors(containerColor = CardBackground),
             shape = RoundedCornerShape(0.dp),
@@ -597,7 +629,6 @@ fun MatchesListScreen(navController: NavController) {
             }
         }
 
-        // ================= TARTALOM =================
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = AccentGreen)
@@ -621,7 +652,6 @@ fun MatchesListScreen(navController: NavController) {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                // ⭐ KEDVENCEK BLOKK A LISTA TETEJÉN
                 if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter) {
                     item {
                         LeagueHeader(title = "⭐ KEDVENC MECCSEK", isCollapsed = false, onToggle = {})
@@ -643,7 +673,6 @@ fun MatchesListScreen(navController: NavController) {
                     }
                 }
 
-                // BAJNOKSÁGOK LISTÁJA
                 filteredLeagues.forEach { league ->
                     val leagueKey = league.id ?: league.name ?: ""
                     val isCollapsed = collapsedLeagueIds.contains(leagueKey)
@@ -747,7 +776,6 @@ fun MatchRow(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // CSILAG GOMB
             Text(
                 text = if (isFavorite) "⭐" else "☆",
                 fontSize = 16.sp,
@@ -808,12 +836,6 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
 
     var predictionData by remember { mutableStateOf<PredictionData?>(null) }
     var isLoadingPrediction by remember { mutableStateOf(false) }
-
-    var standingsData by remember { mutableStateOf<StatPalStandingsResponse?>(null) }
-    var isLoadingStandings by remember { mutableStateOf(false) }
-
-    var oddsData by remember { mutableStateOf<StatPalOddsResponse?>(null) }
-    var isLoadingOdds by remember { mutableStateOf(false) }
 
     LaunchedEffect(match) {
         val apiKey = getApiKey(context)
@@ -1025,10 +1047,10 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                 }
             }
             4 -> {
-                Text("A tabella adatok betöltése folyamatban a bajnoksághoz...", color = TextMuted, fontSize = 14.sp)
+                Text("A tabella adatok betöltése folyamatban...", color = TextMuted, fontSize = 14.sp)
             }
             5 -> {
-                Text("Pre-match oddsok betöltése folyamatban...", color = TextMuted, fontSize = 14.sp)
+                Text("Oddsok betöltése...", color = TextMuted, fontSize = 14.sp)
             }
         }
     }
