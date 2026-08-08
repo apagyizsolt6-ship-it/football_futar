@@ -103,7 +103,7 @@ fun TeamLogo(logoUrl: String?, teamName: String, modifier: Modifier = Modifier.s
 }
 
 // ==========================================
-// DÁTUM HELPEREK ÉS SZIGORÚ SZŰRÉS
+// DÁTUM HELPEREK ÉS RUGALMAS SZŰRÉS
 // ==========================================
 fun formatDateForApi(cal: Calendar): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
@@ -126,35 +126,40 @@ fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
     }
 
     val targetY = targetCal.get(Calendar.YEAR)
-    val targetM = targetCal.get(Calendar.MONTH)
+    val targetM = targetCal.get(Calendar.MONTH) + 1
     val targetD = targetCal.get(Calendar.DAY_OF_MONTH)
 
-    val cleanDate = matchDateStr.trim()
+    val dTwo = String.format("%02d", targetD)
+    val mTwo = String.format("%02d", targetM)
+    val yFour = targetY.toString()
 
-    val formats = listOf(
-        SimpleDateFormat("dd.MM.yyyy", Locale.US),
-        SimpleDateFormat("yyyy-MM-dd", Locale.US),
-        SimpleDateFormat("dd-MM-yyyy", Locale.US),
-        SimpleDateFormat("MM/dd/yyyy", Locale.US)
-    )
+    val raw = matchDateStr.trim()
 
-    for (sdf in formats) {
-        try {
-            val parsedDate = sdf.parse(cleanDate)
-            if (parsedDate != null) {
-                val matchCal = Calendar.getInstance().apply { time = parsedDate }
-                return (matchCal.get(Calendar.YEAR) == targetY &&
-                        matchCal.get(Calendar.MONTH) == targetM &&
-                        matchCal.get(Calendar.DAY_OF_MONTH) == targetD)
-            }
-        } catch (_: Exception) {}
+    // Gyors string-egyezés
+    if (raw.contains("$yFour-$mTwo-$dTwo") ||
+        raw.contains("$dTwo.$mTwo.$yFour") ||
+        raw.contains("$dTwo-$mTwo-$yFour") ||
+        raw.contains("$yFour.$mTwo.$dTwo")) {
+        return true
     }
 
-    val targetDDS = String.format("%02d.%02d.%04d", targetD, targetM + 1, targetY)
-    val targetISO = String.format("%04d-%02d-%02d", targetY, targetM + 1, targetD)
+    // Dátum és időpont formátumok próbája
+    val patterns = listOf(
+        "dd.MM.yyyy HH:mm", "yyyy-MM-dd HH:mm", "dd.MM.yyyy", "yyyy-MM-dd",
+        "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss'Z'", "MM/dd/yyyy"
+    )
 
-    if (cleanDate.contains(targetDDS) || cleanDate.contains(targetISO)) {
-        return true
+    for (pattern in patterns) {
+        try {
+            val sdf = SimpleDateFormat(pattern, Locale.US)
+            val parsed = sdf.parse(raw)
+            if (parsed != null) {
+                val matchCal = Calendar.getInstance().apply { time = parsed }
+                return matchCal.get(Calendar.YEAR) == targetY &&
+                       (matchCal.get(Calendar.MONTH) + 1) == targetM &&
+                       matchCal.get(Calendar.DAY_OF_MONTH) == targetD
+            }
+        } catch (_: Exception) {}
     }
 
     return false
@@ -174,30 +179,26 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 // ==========================================
-// KISZŰRT AMATŐR & ALSÓBB LIGÁK SZIGORÚ LISTÁJA
+// OPTIMÁLIS AMATŐR SZŰRŐ (CSAK AZ IGAZI AMATŐR/UTÁNPÓTLÁS KISZŰRÉSE)
 // ==========================================
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
     val nameLower = leagueName.lowercase()
 
     val forbiddenKeywords = listOf(
+        // Női & Utánpótlás & Tartalék
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
         "u17", "u18", "u19", "u20", "u21", "u23", "youth", "junior", "u-19", "u-21",
         "reserve", "reserves", "(am)", "b-team", "b team", "sub-20", "sub-17",
-        "3rd division", "4th division", "5th division", "3. liga", "4. liga", "5. liga",
-        "division 2", "division 3", "division 4", "division 5",
-        "3. cfl", "3. msfl", "msfl", "cfl", "kakkonen", "ykkonen", "ykkosliiga",
-        "regionalliga", "oberliga", "landesliga", "amateur", "promocional",
-        "primera c", "primera d", "torneo federal", "state league",
-        "npl", "ligue 3", "gaucho 2", "amazonense 2", "vtora liga", "expansion mx",
-        "calcutta", "durand cup", "cecafa", "1.liga classic", "promotion league",
-        "druha liga", "persha liga", "segunda division", "usl championship",
-        "mls next pro", "usl league one", "cymru south", "cymru north",
-        "prva liga", "2. snl", "nb ii", "nb iii", "iii liga", "fnl 2",
-        "national league", "southern league", "isthmian", "serie c", "serie d",
+
+        // Tényleges amatőr & 3-4. osztályú ligák
+        "3. cfl", "3. msfl", "kakkonen", "oberliga", "landesliga",
+        "torneo federal", "gaucho 2", "amazonense 2", "vtora liga",
+        "calcutta", "durand cup", "cecafa", "1.liga classic",
+        "cymru south", "cymru north", "iii liga", "fnl 2",
+        "southern league", "isthmian", "serie d",
         "capixaba", "cearense", "goiano", "mineiro", "paranaense", "copa paulista",
-        "copa governo", "esiliiga", "nakotnes", "i lyga", "league one", "league two",
-        "nifl championship", "liga 3", "division 1"
+        "copa governo", "nakotnes"
     )
 
     return forbiddenKeywords.none { nameLower.contains(it) }
@@ -448,16 +449,6 @@ fun MatchesListScreen(navController: NavController) {
                             isMatchOnSelectedDate(match.date, selectedCalendar)
                         }
 
-                        if (matchesOnDate.isNotEmpty()) {
-                            league.copy(matchElement = null) // Reset to avoid raw JsonElement
-                        } else null
-                    }
-
-                    // Re-assign correctly mapped matches
-                    leagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
-                        val matchesOnDate = league.match.filter { match ->
-                            isMatchOnSelectedDate(match.date, selectedCalendar)
-                        }
                         if (matchesOnDate.isNotEmpty()) {
                             league
                         } else null
