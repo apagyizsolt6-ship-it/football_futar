@@ -53,6 +53,25 @@ fun getApiKey(context: Context): String {
 }
 
 // ==========================================
+// KEDVENCEK TÁROLÁSA
+// ==========================================
+fun getFavoriteMatchIds(context: Context): Set<String> {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getStringSet("favorite_matches", emptySet()) ?: emptySet()
+}
+
+fun toggleFavoriteMatch(context: Context, matchId: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val current = prefs.getStringSet("favorite_matches", emptySet())?.toMutableSet() ?: mutableSetOf()
+    if (current.contains(matchId)) {
+        current.remove(matchId)
+    } else {
+        current.add(matchId)
+    }
+    prefs.edit().putStringSet("favorite_matches", current).apply()
+}
+
+// ==========================================
 // DÁTUM HELPEREK
 // ==========================================
 fun formatDateForApi(cal: Calendar): String {
@@ -106,7 +125,7 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 }
 
 // ==========================================
-// MAGYAROSÍTÓ HELPEREK
+// MAGYAROSÍTÓ & ZÁSZLÓ HELPEREK
 // ==========================================
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
@@ -116,26 +135,26 @@ fun translateLeagueName(leagueName: String?): String {
     var leaguePart = if (parts.size > 1) parts[1].trim() else ""
 
     val countryMap = mapOf(
-        "AFRICA" to "AFRIKA", "ALBANIA" to "ALBÁNIA", "ALGERIA" to "ALGÉRIA", "ANDORRA" to "ANDORRA",
-        "ANGOLA" to "ANGOLA", "ARGENTINA" to "ARGENTÍNA", "ARMENIA" to "ÖRMÉNYORSZÁG", "ASIA" to "ÁZSIA",
-        "AUSTRALIA" to "AUSZTRÁLIA", "AUSTRIA" to "AUSZTRIA", "AZERBAIJAN" to "AZERBAJDZSÁN",
-        "BELARUS" to "FEHÉROROSZORSZÁG", "BELGIUM" to "BELGIUM", "BHUTAN" to "BHUTÁN", "BOLIVIA" to "BOLÍVIA",
-        "BOSNIA AND HERZEGOVINA" to "BOSZNIA-HERCEGOVINA", "BRAZIL" to "BRAZÍLIA", "BULGARIA" to "BULGÁRIA",
-        "CANADA" to "KANADA", "CHILE" to "CHILE", "CHINA" to "KÍNA", "COLOMBIA" to "KOLUMBIA",
-        "CROATIA" to "HORVÁTORSZÁG", "CYPRUS" to "CIPRUS", "CZECH REPUBLIC" to "CSEHORSZÁG", "DENMARK" to "DÁNIA",
-        "ECUADOR" to "ECUADOR", "EGYPT" to "EGYIPTOM", "ENGLAND" to "ANGLIA", "ESTONIA" to "ÉSZTORSZÁG",
-        "EUROPE" to "EURÓPA", "FAROE ISLANDS" to "FERÖER", "FINLAND" to "FINNORSZÁG", "FRANCE" to "FRANCIAORSZÁG",
-        "GEORGIA" to "GRÚZIA", "GERMANY" to "NÉMETORSZÁG", "GREECE" to "GÖRÖGORSZÁG", "HUNGARY" to "MAGYARORSZÁG",
-        "ICELAND" to "IZLAND", "INDIA" to "INDIA", "INDONESIA" to "INDONÉZIA", "IRAN" to "IRÁN",
-        "IRELAND" to "ÍRORSZÁG", "ISRAEL" to "IZRAEL", "ITALY" to "OLASZORSZÁG", "JAPAN" to "JAPÁN",
-        "KAZAKHSTAN" to "KAZAHSZTÁN", "KUWAIT" to "KUVAT", "KYRGYZSTAN" to "KIRGIZISZTÁN", "LATVIA" to "LETTORSZÁG",
-        "LITHUANIA" to "LITVÁNIA", "LUXEMBOURG" to "LUXEMBURG", "MEXICO" to "MEXIKÓ", "MOLDOVA" to "MOLDOVA",
-        "MONTENEGRO" to "MONTENEGRÓ", "MOROCCO" to "MAROKKÓ", "NETHERLANDS" to "HOLLANDIA", "NORWAY" to "NORVÉGIA",
-        "POLAND" to "LENGYELORSZÁG", "PORTUGAL" to "PORTUGÁLIA", "QATAR" to "KATAR", "ROMANIA" to "ROMÁNIA",
-        "RUSSIA" to "OROSZORSZÁG", "SAUDI ARABIA" to "SZAÚD-ARÁBIA", "SCOTLAND" to "SKÓCIA", "SERBIA" to "SZERBIA",
-        "SLOVAKIA" to "SZLOVÁKIA", "SLOVENIA" to "SZLOVÉNIA", "SOUTH AMERICA" to "DÉL-AMERIKA", "SPAIN" to "SPANYOLORSZÁG",
-        "SWEDEN" to "SVÉDORSZÁG", "SWITZERLAND" to "SVÁJC", "TURKEY" to "TÖRÖKORSZÁG", "UKRAINE" to "UKRAJNA",
-        "USA" to "USA", "URUGUAY" to "URUGUAY", "WORLD" to "VILÁG"
+        "AFRICA" to "🌍 AFRIKA", "ALBANIA" to "🇦🇱 ALBÁNIA", "ALGERIA" to "🇩🇿 ALGÉRIA", "ANDORRA" to "🇦🇩 ANDORRA",
+        "ANGOLA" to "🇦🇴 ANGOLA", "ARGENTINA" to "🇦🇷 ARGENTÍNA", "ARMENIA" to "🇦🇲 ÖRMÉNYORSZÁG", "ASIA" to "🌏 ÁZSIA",
+        "AUSTRALIA" to "🇦🇺 AUSZTRÁLIA", "AUSTRIA" to "🇦🇹 AUSZTRIA", "AZERBAIJAN" to "🇦🇿 AZERBAJDZSÁN",
+        "BELARUS" to "🇧🇾 FEHÉROROSZORSZÁG", "BELGIUM" to "🇧🇪 BELGIUM", "BHUTAN" to "🇧🇹 BHUTÁN", "BOLIVIA" to "🇧🇴 BOLÍVIA",
+        "BOSNIA AND HERZEGOVINA" to "🇧🇦 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
+        "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA", "COLOMBIA" to "🇨🇴 KOLUMBIA",
+        "CROATIA" to "🇭🇷 HORVÁTORSZÁG", "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨🇿 CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
+        "ECUADOR" to "🇪🇨 ECUADOR", "EGYPT" to "🇪🇬 EGYIPTOM", "ENGLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 ANGLIA", "ESTONIA" to "🇪🇪 ÉSZTORSZÁG",
+        "EUROPE" to "🇪🇺 EURÓPA", "FAROE ISLANDS" to "🇫🇴 FERÖER", "FINLAND" to "🇫🇮 FINNORSZÁG", "FRANCE" to "🇫🇷 FRANCIAORSZÁG",
+        "GEORGIA" to "🇬🇪 GRÚZIA", "GERMANY" to "🇩🇪 NÉMETORSZÁG", "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "HUNGARY" to "🇭🇺 MAGYARORSZÁG",
+        "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA", "IRAN" to "🇮🇷 IRÁN",
+        "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL", "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN",
+        "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN", "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN", "LATVIA" to "🇱🇻 LETTORSZÁG",
+        "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG", "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA",
+        "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ", "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NORWAY" to "🇳🇴 NORVÉGIA",
+        "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA", "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA",
+        "RUSSIA" to "🇷🇺 OROSZORSZÁG", "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA", "SERBIA" to "🇷🇸 SZERBIA",
+        "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA", "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SPAIN" to "🇪🇸 SPANYOLORSZÁG",
+        "SWEDEN" to "🇸🇪 SVÉDORSZÁG", "SWITZERLAND" to "🇨🇭 SVÁJC", "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA",
+        "USA" to "🇺🇸 USA", "URUGUAY" to "🇺🇾 URUGUAY", "WORLD" to "🌐 VILÁG"
     )
 
     for ((en, hu) in countryMap) {
@@ -312,6 +331,9 @@ fun MatchesListScreen(navController: NavController) {
 
     var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isOnlyLiveFilter by remember { mutableStateOf(false) }
+    var isSearchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
 
     var leagues by remember { mutableStateOf<List<StatPalLeague>>(emptyList()) }
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -350,23 +372,34 @@ fun MatchesListScreen(navController: NavController) {
         fetchMatches()
     }
 
-    // Élő meccsek száma a szűrő jelvényhez
     val totalLiveCount = remember(leagues) {
-        leagues.sumOf { league ->
-            league.match?.count { isLiveMatch(it) } ?: 0
+        leagues.sumOf { league -> league.match?.count { isLiveMatch(it) } ?: 0 }
+    }
+
+    // Keresés és Élő szűrés alkalmazása
+    val filteredLeagues = remember(leagues, isOnlyLiveFilter, searchQuery) {
+        leagues.mapNotNull { league ->
+            val matches = league.match ?: emptyList()
+            val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
+            val matchesAfterSearch = if (searchQuery.isNotBlank()) {
+                val q = searchQuery.lowercase().trim()
+                matchesAfterLive.filter { match ->
+                    (match.home?.name?.lowercase()?.contains(q) == true) ||
+                    (match.away?.name?.lowercase()?.contains(q) == true) ||
+                    (league.name?.lowercase()?.contains(q) == true)
+                }
+            } else matchesAfterLive
+
+            if (matchesAfterSearch.isNotEmpty()) league.copy(match = matchesAfterSearch) else null
         }
     }
 
-    // Megjelenítendő ligák szűrése az élő mód alapján
-    val filteredLeagues = remember(leagues, isOnlyLiveFilter) {
-        if (!isOnlyLiveFilter) {
-            leagues
-        } else {
-            leagues.mapNotNull { league ->
-                val liveMatches = league.match?.filter { isLiveMatch(it) } ?: emptyList()
-                if (liveMatches.isNotEmpty()) {
-                    league.copy(match = liveMatches)
-                } else null
+    // Kedvenc meccsek kigyűjtése
+    val favoriteMatchesList = remember(leagues, favoriteIds) {
+        leagues.flatMap { league ->
+            (league.match ?: emptyList()).filter { match ->
+                val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+                favoriteIds.contains(id)
             }
         }
     }
@@ -392,6 +425,17 @@ fun MatchesListScreen(navController: NavController) {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // KERESŐ TOGGLE GOMB
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (isSearchOpen) AccentGreen else CardBackground)
+                        .clickable { isSearchOpen = !isSearchOpen }
+                        .padding(8.dp)
+                ) {
+                    Text(text = "🔍", fontSize = 14.sp)
+                }
+
                 // ÉLŐ SZŰRŐ GOMB
                 Box(
                     modifier = Modifier
@@ -401,10 +445,7 @@ fun MatchesListScreen(navController: NavController) {
                         .padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "🔴",
-                            fontSize = 12.sp
-                        )
+                        Text(text = "🔴", fontSize = 12.sp)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (totalLiveCount > 0) "ÉLŐ ($totalLiveCount)" else "ÉLŐ",
@@ -415,7 +456,7 @@ fun MatchesListScreen(navController: NavController) {
                     }
                 }
 
-                // KISZŰRŐ / BECSUKÓ GOMB
+                // KERESŐ / ÖSSZECSUKÓ GOMB
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -456,6 +497,27 @@ fun MatchesListScreen(navController: NavController) {
             }
         }
 
+        // ================= KERESŐSÁV =================
+        if (isSearchOpen) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Keresés csapat vagy bajnokság alapján...", color = TextMuted, fontSize = 13.sp) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentGreen,
+                    unfocusedBorderColor = CardBackground,
+                    focusedTextColor = TextWhite,
+                    unfocusedTextColor = TextWhite,
+                    focusedContainerColor = CardBackground,
+                    unfocusedContainerColor = CardBackground
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
         // ================= DÁTUM VÁLASZTÓ SÁV =================
         Card(
             colors = CardDefaults.cardColors(containerColor = CardBackground),
@@ -469,7 +531,6 @@ fun MatchesListScreen(navController: NavController) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // ELŐZŐ NAP GOMB
                 IconButton(onClick = {
                     val newCal = Calendar.getInstance().apply {
                         time = selectedCalendar.time
@@ -480,7 +541,6 @@ fun MatchesListScreen(navController: NavController) {
                     Text("◄", color = AccentGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
-                // NAPTÁR MEGNYITÁSA GOMB
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -510,7 +570,6 @@ fun MatchesListScreen(navController: NavController) {
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // GYORS MA GOMB (ha nem a mai napon vagyunk)
                     if (!isToday(selectedCalendar)) {
                         Text(
                             text = "MA",
@@ -525,7 +584,6 @@ fun MatchesListScreen(navController: NavController) {
                         )
                     }
 
-                    // KÖVETKEZŐ NAP GOMB
                     IconButton(onClick = {
                         val newCal = Calendar.getInstance().apply {
                             time = selectedCalendar.time
@@ -558,34 +616,34 @@ fun MatchesListScreen(navController: NavController) {
                     fontWeight = FontWeight.Medium
                 )
             }
-        } else if (isOnlyLiveFilter && filteredLeagues.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Jelenleg nincsenek élő mérkőzések ezen a napon.",
-                        color = TextMuted,
-                        textAlign = TextAlign.Center,
-                        fontSize = 15.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { isOnlyLiveFilter = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = CardBackground)
-                    ) {
-                        Text("Összes meccs mutatása", color = AccentGreen)
-                    }
-                }
-            }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
+                // ⭐ KEDVENCEK BLOKK A LISTA TETEJÉN
+                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter) {
+                    item {
+                        LeagueHeader(title = "⭐ KEDVENC MECCSEK", isCollapsed = false, onToggle = {})
+                    }
+                    items(favoriteMatchesList) { match ->
+                        val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+                        MatchRow(
+                            match = match,
+                            isFavorite = true,
+                            onToggleFavorite = {
+                                toggleFavoriteMatch(context, matchId)
+                                favoriteIds = getFavoriteMatchIds(context)
+                            },
+                            onClick = {
+                                selectedMatchGlobal = match
+                                navController.navigate("match_detail")
+                            }
+                        )
+                    }
+                }
+
+                // BAJNOKSÁGOK LISTÁJA
                 filteredLeagues.forEach { league ->
                     val leagueKey = league.id ?: league.name ?: ""
                     val isCollapsed = collapsedLeagueIds.contains(leagueKey)
@@ -606,10 +664,21 @@ fun MatchesListScreen(navController: NavController) {
 
                     if (!isCollapsed) {
                         items(league.match ?: emptyList()) { match ->
-                            MatchRow(match) {
-                                selectedMatchGlobal = match
-                                navController.navigate("match_detail")
-                            }
+                            val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+                            val isFav = favoriteIds.contains(matchId)
+
+                            MatchRow(
+                                match = match,
+                                isFavorite = isFav,
+                                onToggleFavorite = {
+                                    toggleFavoriteMatch(context, matchId)
+                                    favoriteIds = getFavoriteMatchIds(context)
+                                },
+                                onClick = {
+                                    selectedMatchGlobal = match
+                                    navController.navigate("match_detail")
+                                }
+                            )
                         }
                     }
                 }
@@ -650,7 +719,12 @@ fun LeagueHeader(title: String, isCollapsed: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-fun MatchRow(match: StatPalMatch, onClick: () -> Unit) {
+fun MatchRow(
+    match: StatPalMatch,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    onClick: () -> Unit
+) {
     val rawStatus = match.status ?: match.time ?: ""
     val live = isLiveMatch(match)
     val formattedTime = formatToLocalTime(match.date, rawStatus)
@@ -673,6 +747,15 @@ fun MatchRow(match: StatPalMatch, onClick: () -> Unit) {
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // CSILAG GOMB
+            Text(
+                text = if (isFavorite) "⭐" else "☆",
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .clickable { onToggleFavorite() }
+                    .padding(end = 8.dp)
+            )
+
             Text(
                 text = formattedTime,
                 color = if (live) AccentRed else TextMuted,
@@ -712,7 +795,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -725,6 +808,12 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
 
     var predictionData by remember { mutableStateOf<PredictionData?>(null) }
     var isLoadingPrediction by remember { mutableStateOf(false) }
+
+    var standingsData by remember { mutableStateOf<StatPalStandingsResponse?>(null) }
+    var isLoadingStandings by remember { mutableStateOf(false) }
+
+    var oddsData by remember { mutableStateOf<StatPalOddsResponse?>(null) }
+    var isLoadingOdds by remember { mutableStateOf(false) }
 
     LaunchedEffect(match) {
         val apiKey = getApiKey(context)
@@ -765,9 +854,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                         isLoadingLineup = false
                     }
                 }
-            }
 
-            if (matchId.isNotBlank()) {
                 isLoadingPrediction = true
                 coroutineScope.launch {
                     try {
@@ -936,6 +1023,12 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                         }
                     }
                 }
+            }
+            4 -> {
+                Text("A tabella adatok betöltése folyamatban a bajnoksághoz...", color = TextMuted, fontSize = 14.sp)
+            }
+            5 -> {
+                Text("Pre-match oddsok betöltése folyamatban...", color = TextMuted, fontSize = 14.sp)
             }
         }
     }
