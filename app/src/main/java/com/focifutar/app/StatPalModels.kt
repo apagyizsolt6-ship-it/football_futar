@@ -1,20 +1,69 @@
 package com.focifutar.app
 
+import com.google.gson.Gson
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
+import com.google.gson.reflect.TypeToken
 
 data class StatPalResponse(
     @SerializedName("live_matches") val liveMatches: StatPalLiveMatches?
 )
 
 data class StatPalLiveMatches(
-    @SerializedName("league") val league: List<StatPalLeague>?
-)
+    @SerializedName("league") private val leagueElement: JsonElement?
+) {
+    val league: List<StatPalLeague>
+        get() {
+            if (leagueElement == null || leagueElement.isJsonNull) return emptyList()
+            val gson = Gson()
+            return try {
+                if (leagueElement.isJsonArray) {
+                    val listType = object : TypeToken<List<StatPalLeague>>() {}.type
+                    gson.fromJson(leagueElement, listType) ?: emptyList()
+                } else if (leagueElement.isJsonObject) {
+                    val obj = leagueElement.asJsonObject
+                    if (obj.has("match") || obj.has("name") || obj.has("id")) {
+                        listOfNotNull(gson.fromJson(obj, StatPalLeague::class.java))
+                    } else {
+                        obj.entrySet().mapNotNull { entry ->
+                            try { gson.fromJson(entry.value, StatPalLeague::class.java) } catch (_: Exception) { null }
+                        }
+                    }
+                } else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+}
 
 data class StatPalLeague(
     @SerializedName("id") val id: String?,
     @SerializedName("name") val name: String?,
-    @SerializedName("match") val match: List<StatPalMatch>?
-)
+    @SerializedName("match") private val matchElement: JsonElement?
+) {
+    val match: List<StatPalMatch>
+        get() {
+            if (matchElement == null || matchElement.isJsonNull) return emptyList()
+            val gson = Gson()
+            return try {
+                if (matchElement.isJsonArray) {
+                    val listType = object : TypeToken<List<StatPalMatch>>() {}.type
+                    gson.fromJson(matchElement, listType) ?: emptyList()
+                } else if (matchElement.isJsonObject) {
+                    val obj = matchElement.asJsonObject
+                    if (obj.has("id") || obj.has("home") || obj.has("away")) {
+                        listOfNotNull(gson.fromJson(obj, StatPalMatch::class.java))
+                    } else {
+                        obj.entrySet().mapNotNull { entry ->
+                            try { gson.fromJson(entry.value, StatPalMatch::class.java) } catch (_: Exception) { null }
+                        }
+                    }
+                } else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+}
 
 data class StatPalMatch(
     @SerializedName("id") val id: String?,
@@ -44,8 +93,25 @@ data class HeadToHeadData(
 )
 
 data class RecentMeetings(
-    @SerializedName("match") val match: List<H2HMatch>?
-)
+    @SerializedName("match") private val matchElement: JsonElement?
+) {
+    val match: List<H2HMatch>
+        get() {
+            if (matchElement == null || matchElement.isJsonNull) return emptyList()
+            val gson = Gson()
+            return try {
+                if (matchElement.isJsonArray) {
+                    val listType = object : TypeToken<List<H2HMatch>>() {}.type
+                    gson.fromJson(matchElement, listType) ?: emptyList()
+                } else if (matchElement.isJsonObject) {
+                    val obj = matchElement.asJsonObject
+                    listOfNotNull(gson.fromJson(obj, H2HMatch::class.java))
+                } else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+}
 
 data class H2HMatch(
     @SerializedName("date") val date: String?,
