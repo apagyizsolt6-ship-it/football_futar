@@ -76,7 +76,21 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
 }
 
 // ==========================================
-// CSAPAT LOGÓ COMPOSABLE (Javított méretezéssel)
+// LOGÓ URL HELPER (Relatív URL-ek kiegészítése)
+// ==========================================
+fun getFullLogoUrl(rawUrl: String?): String? {
+    if (rawUrl.isNullOrBlank()) return null
+    val url = rawUrl.trim()
+    return when {
+        url.startsWith("http://") || url.startsWith("https://") -> url
+        url.startsWith("//") -> "https:$url"
+        url.startsWith("/") -> "https://statpal.io$url"
+        else -> "https://statpal.io/$url"
+    }
+}
+
+// ==========================================
+// CSAPAT LOGÓ COMPOSABLE
 // ==========================================
 @Composable
 fun TeamLogo(
@@ -85,9 +99,11 @@ fun TeamLogo(
     modifier: Modifier = Modifier.size(22.dp),
     fontSize: TextUnit = 11.sp
 ) {
-    if (!logoUrl.isNullOrBlank()) {
+    val fullUrl = getFullLogoUrl(logoUrl)
+
+    if (!fullUrl.isNullOrBlank()) {
         AsyncImage(
-            model = logoUrl,
+            model = fullUrl,
             contentDescription = teamName,
             contentScale = ContentScale.Fit,
             modifier = modifier.clip(CircleShape)
@@ -111,7 +127,7 @@ fun TeamLogo(
 }
 
 // ==========================================
-// DÁTUM HELPEREK ÉS RUGALMAS SZŰRÉS
+// DÁTUM HELPEREK ÉS SZŰRÉS
 // ==========================================
 fun formatDateForApi(cal: Calendar): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
@@ -185,7 +201,7 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 // ==========================================
-// OPTIMÁLIS SZŰRŐ (CSAK AZ IGAZI AMATŐR/UTÁNPÓTLÁS/4. OSZTÁLY KISZŰRÉSE)
+// OPTIMÁLIS AMATŐR & REGIONÁLIS LIGA SZŰRŐ
 // ==========================================
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
@@ -195,6 +211,7 @@ fun isAllowedLeague(leagueName: String?): Boolean {
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
         "u17", "u18", "u19", "u20", "u21", "u23", "youth", "junior", "u-19", "u-21",
         "reserve", "reserves", "(am)", "b-team", "b team", "sub-20", "sub-17",
+        "promocional amateur", "npl", "state league", "queensland premier",
         "3. cfl", "3. msfl", "4. liga", "kakkonen", "oberliga", "landesliga",
         "regionalliga", "torneo federal", "gaucho 2", "amazonense 2", "vtora liga",
         "calcutta", "durand cup", "cecafa", "1.liga classic", "esiliiga b",
@@ -208,7 +225,7 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 }
 
 // ==========================================
-// TELJES KÖRŰ MAGYAROSÍTÓ HELPEREK (JAVÍTOTT ORSZÁGOKKAL ÉS CZEHORSZÁG JAVÍTÁSSAL)
+// ORSZÁG ÉS LIGA MAGYARÍTÓ
 // ==========================================
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
@@ -333,23 +350,36 @@ fun translateChoice(choice: String?): String {
 }
 
 // ==========================================
-// AI TIPP ELEMZÉS MAGYARÍTÁSA (KIBŐVÍTETT SZÓTÁR)
+// AI TIPP TELJES MONDAT- ÉS KIFINOMULT SZÓTÁR-FORDÍTÓ
 // ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
     var result: String = text
 
-    val phraseReplacements = mapOf(
+    val phraseReplacements = listOf(
+        // Teljes mondatsablonok a legpontosabb fordításért
+        "is unbeaten so far this season, playing confidently in their new" to "ebben a szezonban még veretlen, és magabiztosan játszik az új",
+        "with strong recent form including a 2-0 win in their last home match" to "meggyőző formában van, beleértve a legutóbbi hazai 2-0-s győzelmet",
+        "and a 4-1 away win against" to "és a korábbi 4-1-es vendéggyőzelmet a(z)",
+        "has injury doubts for their goalkeeper and key attackers sidelined" to "kapusának játéka kétséges, míg kulcsfontosságú támadói sérülés miatt hiányoznak",
+        "and they have struggled away with only one away win this season" to "és vendégként szenvednek: ebben a szezonban mindössze egyetlen győzelmük van idegenben",
+        "The head-to-head record favors" to "Az egymás elleni mérleg a következőt favorizálja:",
+        "slightly at home, and market odds strongly support a" to "kissé hazai pályán, és a fogadási oddsok is erőtelyen támogatják a(z)",
+        "win. Tactical insights suggest" to "győzelmét. A taktikai elemzés szerint",
+        "'s solid defense and home advantage will be key against" to "stabil védelme és hazai pályája kulcsfontosságú lesz a(z)",
+        "'s possession-based but less effective away performances." to "labdabirtoklásra épülő, de idegenben kevésbé hatékony játéka ellen.",
+
+        // Egyedi kifejezések és összetett szavak
         "has a strong historical head-to-head advantage over" to "jelentős egymás elleni előnnyel rendelkezik a következőkkel szemben:",
         "have a closely matched recent head-to-head record with many draws" to "szoros és kiegyenlített egymás elleni mérleggel rendelkeznek, sok döntetlennel",
         "have a closely matched recent head-to-head record" to "szoros egymás elleni mérleggel rendelkeznek",
         "especially at home" to "különösen hazai pályán",
         "winning 16 of 24 home encounters" to "megnyerve a 24 hazai mérkőzésből 16-ot",
-        "winning" to "megnyerve",
         "home encounters" to "hazai mérkőzést",
         "Despite some recent struggles in friendlies" to "A legutóbbi barátságos mérkőzések nehézségei ellenére",
         "squad is largely intact except for one defender sidelined" to "a keret egy sérült védőt leszámítva hiánytalan",
-        "while Cercle Brugge also has a key midfielder out" to "míg a vendégeknél is hiányzik egy kulcsfontosságú középpályás",
+        "while" to "míg a(z)",
+        "also has a key midfielder out" to "csapatában is hiányzik egy kulcsfontosságú középpályás",
         "The home advantage at" to "A hazai pálya előnye a",
         "and Standard's deeper squad quality" to "valamint a hazaiak mélyebb, minőségibb kerete",
         "recent transfer activity suggest they are favored to win" to "és a friss átigazolások alapján ők a mérkőzés esélyesei",
@@ -380,7 +410,13 @@ fun translateReasoning(text: String?): String {
         "shows stronger form" to "jobb formát mutat",
         "key attacking players fit and motivated" to "a kulcsfontosságú támadók fittek és motiváltak",
         "lacks injuries" to "nincsenek sérültjei",
-        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában"
+        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában",
+
+        // Általános angol fordítószavak a tisztításhoz
+        "is unbeaten" to "veretlen",
+        "recently" to "mostanában",
+        "this season" to "ebben a szezonban",
+        "against" to "ellen"
     )
 
     for ((en, hu) in phraseReplacements) {
