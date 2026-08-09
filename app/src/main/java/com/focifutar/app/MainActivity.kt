@@ -4,6 +4,7 @@ import android.app.DatePickerDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -609,6 +610,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Előtér-szolgáltatás elindítása, hogy a háttérben is folyamatosan fusson és figyeljen
+        val serviceIntent = Intent(this, MatchLiveService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+        
         val workRequest = PeriodicWorkRequestBuilder<GoalCheckWorker>(15, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -783,7 +792,7 @@ fun MatchesListScreen(
                                 
                                 coroutineScope.launch {
                                     flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
-                                    delay(15000L) // 15 másodpercig villog
+                                    delay(15000L)
                                     flashingMatchesState = flashingMatchesState - id
                                 }
                             }
@@ -818,11 +827,10 @@ fun MatchesListScreen(
                                     val cardText = "$cardIcon $cardName (${event.minute}'): ${event.player} (${m.home?.name} - ${m.away?.name})"
                                     sendSystemNotification(context, "⚠️ Lap esemény", cardText)
 
-                                    // Villogás indítása a kártya színével (Sárga = sárga, Piros = piros)
                                     coroutineScope.launch {
                                         val flashColor = if (isRed) Color(0xFFEF4444) else Color(0xFFEAB308)
                                         flashingMatchesState = flashingMatchesState + (id to flashColor)
-                                        delay(15000L) // 15 másodpercig villog
+                                        delay(15000L)
                                         flashingMatchesState = flashingMatchesState - id
                                     }
                                 }
@@ -851,7 +859,6 @@ fun MatchesListScreen(
         }
     }
 
-    // AUTOMATIKUS 15 MÁSODPERCES ÉLŐ FRISSÍTÉS CIKLUS
     LaunchedEffect(selectedCalendar) {
         fetchMatches()
         while (true) {
@@ -1508,7 +1515,6 @@ fun MatchRow(
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
     val isFlashing = flashColor != null
-    // Villogó animáció (15 másodpercig az adott esemény színével)
     val infiniteTransition = rememberInfiniteTransition(label = "flash")
     val flashAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
