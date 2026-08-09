@@ -674,10 +674,12 @@ fun MatchesListScreen(
                     val scoreStr = "${m.home?.goals ?: "0"}-${m.away?.goals ?: "0"}"
                     newScoresMap[id] = scoreStr
 
-                    if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
+                    // Ha kedvenc meccs, és változott a gól
+                    val isFav = favoriteIds.contains(id)
+                    if (isFav && previousScoresMap.containsKey(id) && isLiveMatch(m)) {
                         val oldScore = previousScoresMap[id]
                         if (oldScore != null && oldScore != scoreStr) {
-                            Toast.makeText(context, "⚽ GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
@@ -1773,14 +1775,18 @@ fun MatchDetailScreen(
 
 @Composable
 fun TimelineTab(match: StatPalMatch, colors: AppColors) {
-    val events = match.events?.event.orEmpty()
+    val events = match.events?.event.orEmpty().filter { event ->
+        val playerName = event.player?.trim()
+        !playerName.isNullOrBlank() && playerName != "-"
+    }
+
     if (events.isEmpty()) {
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
             modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
         ) {
             Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text("Ehhez a mérkőzéshez még nincsenek események (idővonal).", color = colors.textMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Text("Ehhez a mérkőzéshez még nincsenek részletes események.", color = colors.textMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
         }
         return
@@ -1822,7 +1828,7 @@ fun TimelineTab(match: StatPalMatch, colors: AppColors) {
                         Text(text = icon, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 8.dp))
                         Column {
                             Text(text = playerName, color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                            if (assist.isNotBlank()) {
+                            if (assist.isNotBlank() && assist != "-") {
                                 Text(text = "Gólpassz: $assist", color = colors.textMuted, fontSize = 11.sp)
                             }
                         }
