@@ -600,6 +600,7 @@ fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
 }
 
 var selectedMatchGlobal: StatPalMatch? = null
+var selectedLeagueIdGlobal: String? = null
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -627,7 +628,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("match_detail") {
                             selectedMatchGlobal?.let { match ->
-                                MatchDetailScreen(match, navController, colors, betSlipItems) { item ->
+                                MatchDetailScreen(match, selectedLeagueIdGlobal, navController, colors, betSlipItems) { item ->
                                     val exists = betSlipItems.find { it.matchId == item.matchId && it.choiceName == item.choiceName }
                                     betSlipItems = if (exists != null) {
                                         betSlipItems.filter { !(it.matchId == item.matchId && it.choiceName == item.choiceName) }
@@ -796,9 +797,14 @@ fun MatchesListScreen(
         }
     }
 
-    val featuredMatch = remember(leagues) {
-        leagues.flatMap { it.match }.firstOrNull { isTopLeague(it.home?.name) || isLiveMatch(it) }
-            ?: leagues.flatMap { it.match }.firstOrNull()
+    val featuredMatchPair = remember(leagues) {
+        for (league in leagues) {
+            val m = league.match.firstOrNull { isTopLeague(it.home?.name) || isLiveMatch(it) }
+            if (m != null) return@remember Pair(m, league.id)
+        }
+        val fallbackLeague = leagues.firstOrNull()
+        val fallbackMatch = fallbackLeague?.match?.firstOrNull()
+        if (fallbackMatch != null) Pair(fallbackMatch, fallbackLeague.id) else null
     }
 
     val favoriteMatchesList = remember(leagues, favoriteIds) {
@@ -806,7 +812,7 @@ fun MatchesListScreen(
             league.match.filter { match ->
                 val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                 favoriteIds.contains(id)
-            }
+            }.map { Pair(it, league.id) }
         }
     }
 
@@ -971,10 +977,11 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                if (featuredMatch != null && searchQuery.isBlank() && !isOnlyLiveFilter) {
+                if (featuredMatchPair != null && searchQuery.isBlank() && !isOnlyLiveFilter) {
                     item {
-                        FeaturedMatchBanner(featuredMatch, colors) {
-                            selectedMatchGlobal = featuredMatch
+                        FeaturedMatchBanner(featuredMatchPair.first, colors) {
+                            selectedMatchGlobal = featuredMatchPair.first
+                            selectedLeagueIdGlobal = featuredMatchPair.second
                             navController.navigate("match_detail")
                         }
                     }
@@ -991,7 +998,7 @@ fun MatchesListScreen(
                             onTogglePin = {}
                         )
                     }
-                    items(favoriteMatchesList) { match ->
+                    items(favoriteMatchesList) { (match, leagueId) ->
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                         MatchRow(
                             match,
@@ -1003,6 +1010,7 @@ fun MatchesListScreen(
                             },
                             {
                                 selectedMatchGlobal = match
+                                selectedLeagueIdGlobal = leagueId
                                 navController.navigate("match_detail")
                             }
                         )
@@ -1053,6 +1061,7 @@ fun MatchesListScreen(
                                 },
                                 {
                                     selectedMatchGlobal = match
+                                    selectedLeagueIdGlobal = league.id
                                     navController.navigate("match_detail")
                                 }
                             )
@@ -1376,6 +1385,7 @@ fun MatchRow(
 @Composable
 fun MatchDetailScreen(
     match: StatPalMatch,
+    leagueId: String?,
     navController: NavController,
     colors: AppColors,
     betSlipItems: List<BetSlipItem>,
@@ -1401,6 +1411,9 @@ fun MatchDetailScreen(
 
     var predictionData by remember { mutableStateOf<PredictionData?>(null) }
     var isLoadingPrediction by remember { mutableStateOf(false) }
+
+    var prematchOddsMatch by remember { mutableStateOf<PrematchOddsMatch?>(null) }
+    var isLoadingOdds by remember { mutableStateOf(false) }
 
     val homeG = match.home?.goals?.trim()
     val awayG = match.away?.goals?.trim()
@@ -1495,6 +1508,30 @@ fun MatchDetailScreen(
                             response.prediction?.let { ApiCacheManager.put(cacheKey, it) }
                         } catch (_: Exception) {} finally {
                             isLoadingPrediction = false
+                        }
+                    }
+                }
+            }
+            5 -> {
+                val lId = leagueId ?: ""
+                val cacheKey = "odds_${lId}_${matchId}"
+                val cached: PrematchOddsMatch? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    prematchOddsMatch = cached
+                } else if (lId.isNotBlank() && prematchOddsMatch == null) {
+                    isLoadingOdds = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getPrematchOdds(lId, apiKey)
+                            val matchFound = response.prematchOdds?.league?.match?.find { 
+                                it.mainId == matchId || (it.home?.name == match.home?.name && it.away?.name == match.away?.name)
+                            }
+                            if (matchFound != null) {
+                                prematchOddsMatch = matchFound
+                                ApiCacheManager.put(cacheKey, matchFound)
+                            }
+                        } catch (_: Exception) {} finally {
+                            isLoadingOdds = false
                         }
                     }
                 }
@@ -1691,7 +1728,7 @@ fun MatchDetailScreen(
                 StandingsTab(colors)
             }
             5 -> {
-                OddsTab(colors)
+                OddsTab(match, prematchOddsMatch, isLoadingOdds, betSlipItems, colors, onToggleOdds)
             }
         }
     }
@@ -1722,25 +1759,123 @@ fun StandingsTab(colors: AppColors) {
 }
 
 @Composable
-fun OddsTab(colors: AppColors) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+fun OddsTab(
+    match: StatPalMatch,
+    prematchOddsMatch: PrematchOddsMatch?,
+    isLoadingOdds: Boolean,
+    betSlipItems: List<BetSlipItem>,
+    colors: AppColors,
+    onToggleOdds: (BetSlipItem) -> Unit
+) {
+    val homeName = match.home?.name ?: "Hazai"
+    val awayName = match.away?.name ?: "Vendég"
+    val matchId = match.mainId ?: "$homeName-$awayName"
+    val matchTitle = "$homeName vs $awayName"
+
+    if (isLoadingOdds) {
+        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = colors.accentPrimary)
+        }
+        return
+    }
+
+    val oneXtwoCategory = prematchOddsMatch?.odds?.find { it.name.equals("1x2", ignoreCase = true) }
+    val bookmaker = oneXtwoCategory?.bookmaker?.firstOrNull()
+    val oddsList = bookmaker?.odd ?: emptyList()
+
+    val homeOddVal = oddsList.find { it.name.equals("Home", ignoreCase = true) }?.value
+    val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value
+    val awayOddVal = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value
+
+    if (homeOddVal.isNullOrBlank() || drawOddVal.isNullOrBlank() || awayOddVal.isNullOrBlank()) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
         ) {
-            Text("🎲 ÉLŐ ODSOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Ehhez a mérkőzéshez a StatPal Starter API csomagban jelenleg nem érhetők el élő fogadási szorzók.",
-                color = colors.textMuted,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("🎲 ÉLŐ ODSOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Ehhez a mérkőzéshez a StatPal API-ban nem áll rendelkezésre meccs előtti szorzó.",
+                    color = colors.textMuted,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("MÉRKŐZÉS GYŐZTES (1X2)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(bookmaker?.name ?: "StatPal", color = colors.textMuted, fontSize = 10.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val is1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 ($homeName)" }
+                        val isX = betSlipItems.any { it.matchId == matchId && it.choiceName == "X (Döntetlen)" }
+                        val is2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "2 ($awayName)" }
+
+                        val hDouble = homeOddVal.toDoubleOrNull() ?: 1.0
+                        val dDouble = drawOddVal.toDoubleOrNull() ?: 1.0
+                        val aDouble = awayOddVal.toDoubleOrNull() ?: 1.0
+
+                        OddsBox("1 ($homeName)", homeOddVal, isSelected = is1, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1 ($homeName)", hDouble))
+                        }
+                        OddsBox("X (Döntetlen)", drawOddVal, isSelected = isX, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "X (Döntetlen)", dDouble))
+                        }
+                        OddsBox("2 ($awayName)", awayOddVal, isSelected = is2, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "2 ($awayName)", aDouble))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OddsBox(
+    title: String,
+    odds: String,
+    isSelected: Boolean,
+    colors: AppColors,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) colors.accentPrimary else colors.background)
+            .border(1.dp, if (isSelected) colors.accentPrimary else colors.border, RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, color = if (isSelected) Color.White else colors.textMuted, fontSize = 10.sp, maxLines = 1)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(odds, color = if (isSelected) Color.White else colors.accentPrimary, fontWeight = FontWeight.Black, fontSize = 15.sp)
         }
     }
 }
