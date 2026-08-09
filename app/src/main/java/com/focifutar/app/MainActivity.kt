@@ -33,6 +33,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -44,6 +45,32 @@ val AccentRed = Color(0xFFFF3366)
 val AccentYellow = Color(0xFFFFCC00)
 val TextWhite = Color(0xFFFFFFFF)
 val TextMuted = Color(0xFF8C96A0)
+
+// ==========================================
+// API TÁROLÓ (CACHE MANAGER)
+// ==========================================
+object ApiCacheManager {
+    private val cacheMap = mutableMapOf<String, Pair<Long, Any>>()
+    private const val DEFAULT_TTL_MS = 5 * 60 * 1000L // 5 perc tárolás
+
+    fun <T> get(key: String, ttlMs: Long = DEFAULT_TTL_MS): T? {
+        val entry = cacheMap[key] ?: return null
+        if (System.currentTimeMillis() - entry.first > ttlMs) {
+            cacheMap.remove(key)
+            return null
+        }
+        @Suppress("UNCHECKED_CAST")
+        return entry.second as? T
+    }
+
+    fun put(key: String, value: Any) {
+        cacheMap[key] = Pair(System.currentTimeMillis(), value)
+    }
+
+    fun remove(key: String) {
+        cacheMap.remove(key)
+    }
+}
 
 fun saveApiKey(context: Context, key: String) {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
@@ -361,73 +388,67 @@ fun translateChoice(choice: String?): String {
 }
 
 // ==========================================
-// DYNAMIKUS ÉS TELJES AI ELEMZÉS MAGYARÍTÓ
+// MINTAILLESZTŐ ÉS DYNAMIKUS AI ELEMZÉS FORDÍTÓ
 // ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
-    var result: String = text
+    var result: String = text.trim()
 
-    val dict = mapOf(
-        "is unbeaten so far this season, playing confidently in their new" to "ebben a szezonban még veretlen, és magabiztosan játszik az új",
-        "with strong recent form including a 2-0 win in their last home match" to "meggyőző formában van, beleértve a legutóbbi hazai 2-0-s győzelmét",
-        "has injury doubts for their goalkeeper and key attackers sidelined" to "kapusának és kulcstámadóinak játéka sérülés miatt kétséges",
-        "and they have struggled away with only one away win this season" to "és idegenben gyengélkednek: ebben a szezonban mindössze egy vendéggyőzelmük van",
-        "The head-to-head record favors" to "Az egymás elleni mérleg a következőt favorizálja:",
-        "slightly at home, and market odds strongly support a" to "kissé hazai pályán, és a fogadási oddsok is határozottan támogatják a(z)",
-        "win. Tactical insights suggest" to "győzelmét. A taktikai elemzés szerint",
-        "'s solid defense and home advantage will be key against" to "stabil védelme és hazai pályája kulcsfontosságú lesz a(z)",
-        "'s possession-based but less effective away performances." to "labdabirtoklásra épülő, de idegenben kevésbé hatékony játéka ellen.",
-        "has a strong historical head-to-head advantage over" to "jelentős egymás elleni előnnyel rendelkezik a következőkkel szemben:",
-        "have a closely matched recent head-to-head record with many draws" to "szoros és kiegyenlített egymás elleni mérleggel rendelkeznek, sok döntetlennel",
-        "have a closely matched recent head-to-head record" to "szoros egymás elleni mérleggel rendelkeznek",
-        "The lineups are near full strength with no significant injuries" to "A keretek hiányzók nélkül, közel teljes erősségűek",
-        "and the market odds also suggest a balanced contest" to "és a fogadási oddsok is szoros mérkőzést sejtetnek",
-        "Given these factors, a draw is the most likely outcome" to "Ezek alapján a döntetlen a legvalószínűbb kimenetel",
-        "squad is largely intact except for one defender sidelined" to "a keret egy sérült védőt leszámítva hiánytalan",
-        "recent transfer activity suggest they are favored to win" to "és a friss átigazolások alapján ők a mérkőzés esélyesei",
-        "is playing at home with a fully fit squad" to "hazai pályán játszik teljes kerettel",
-        "key attacking players fit and motivated" to "a kulcsfontosságú támadók fittek és motiváltak",
-        "a 4-1 away win against" to "egy 4-1-es idegenbeli győzelmet a következők ellen:",
-        "winning 16 of 24 home encounters" to "megnyerve a 24 hazai mérkőzésből 16-ot",
-        "Despite some recent struggles in friendlies" to "A legutóbbi barátságos mérkőzések nehézségei ellenére",
-        "also has a key midfielder out" to "csapatában is hiányzik egy kulcsfontosságú középpályás",
-        "and Standard's deeper squad quality" to "valamint a hazaiak mélyebb, minőségibb kerete",
-        "a home win with a reasonable margin" to "meggyőző hazai győzelmet",
-        "has shown defensive vulnerabilities" to "védelmi sebezhetőséget mutatott",
-        "has a less favorable away record" to "gyengébb vendégmérleggel rendelkezik",
-        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában",
-        "Market odds also support a" to "A fogadási oddsok is támogatják a(z)",
-        "the market odds favor" to "a fogadási oddsok a következőt favorizálják:",
-        "is the most likely outcome" to "a legvalószínűbb kimenetel",
-        "unbeaten at home recently" to "hazai pályán veretlen mostanában",
-        "showing solid away performances" to "meggyőzően szerepel vendégként",
-        "holds an unbeaten record" to "veretlen sorozattal bír",
-        "recent head-to-head win" to "legutóbbi egymás elleni győzelem",
-        "shows stronger form" to "jobb formát mutat",
-        "aims to bounce back" to "javítani szeretne",
-        "after an opening day loss" to "a nyitófordulós vereség után",
-        "despite a stable lineup" to "a stabil felállás ellenére",
-        "Both teams are in good form" to "Mindkét csapat jó formának örvend",
-        "in their last meetings" to "a legutóbbi összecsapásaikon",
-        "especially at home" to "különösen hazai pályán",
-        "is unbeaten so far" to "ebben a szezonban veretlen",
-        "with odds of" to "szorzóval,",
-        "indicating confidence in" to "jelezve a bizalmat a következőkben:",
-        "home advantage at" to "hazai pálya előnye a",
-        "lacks injuries" to "nincsenek sérültjei",
-        "this season" to "ebben a szezonban",
-        "home match" to "hazai mérkőzés",
-        "away win" to "vendég győzelem",
-        "home win" to "hazai győzelem",
-        "recently" to "mostanában",
-        "against" to "ellen",
-        "chances" to "esélyei",
-        "while" to "míg"
+    val regexRules = listOf(
+        Regex("(?i)([A-Za-z0-9\\s]+) is unbeaten so far this season") to "A(z) $1 ebben a szezonban még veretlen",
+        Regex("(?i)playing confidently in their new ([A-Za-z0-9\\s]+)") to "magabiztosan játszik az új $1 stadionban",
+        Regex("(?i)with strong recent form including a (\\d+-\\d+) win in their last home match") to "meggyőző formában van, beleértve a legutóbbi hazai $1-es győzelmét",
+        Regex("(?i)and a (\\d+-\\d+) away win against ([A-Za-z0-9\\s]+) recently") to "és a legutóbbi $1-es vendéggyőzelmét a(z) $2 ellen",
+        Regex("(?i)and a (\\d+-\\d+) vendég győzelem against ([A-Za-z0-9\\s]+) recently") to "és a legutóbbi $1-es vendéggyőzelmét a(z) $2 ellen",
+        Regex("(?i)([A-Za-z0-9\\s]+) has injury doubts for their goalkeeper and key attackers sidelined") to "A(z) $1 csapatánál a kapus játéka kérdéses, a kulcstámadók pedig sérültek",
+        Regex("(?i)and they have struggled away with only one away win this season") to "és idegenben szenvednek, mindössze egy vendéggyőzelemmel ebben a szezonban",
+        Regex("(?i)and they have struggled away with only one vendég győzelem this season") to "és idegenben szenvednek, mindössze egy vendéggyőzelemmel ebben a szezonban",
+        Regex("(?i)The head-to-head record favors ([A-Za-z0-9\\s]+) slightly at home") to "Az egymás elleni mérleg kissé a(z) $1 csapatának kedvez hazai pályán",
+        Regex("(?i)and market odds strongly support a ([A-Za-z0-9\\s]+) win") to "és a fogadási oddsok is határozottan a(z) $1 győzelmét támogatják",
+        Regex("(?i)Tactical insights suggest ([A-Za-z0-9\\s']+)'s solid defense and home advantage will be key against ([A-Za-z0-9\\s']+)'s possession-based but less effective away performances") to "A taktikai elemzés szerint a hazaiak stabil védelme és a pályaelőny kulcsfontos lesz a vendégek labdabirtoklásra épülő, de idegenben kevésbé hatékony játéka ellen",
+        Regex("(?i)([A-Za-z0-9\\s]+) has a strong historical head-to-head advantage over ([A-Za-z0-9\\s]+)") to "A(z) $1 jelentős egymás elleni előnnyel rendelkezik a(z) $2 ellen",
+        Regex("(?i)([A-Za-z0-9\\s]+) and ([A-Za-z0-9\\s]+) have a closely matched recent head-to-head record") to "A(z) $1 és a(z) $2 kiegyenlített egymás elleni mérleggel rendelkeznek",
+        Regex("(?i)Given these factors, a draw is the most likely outcome") to "Ezek alapján a döntetlen a legvalószínűbb kimenetel",
+        Regex("(?i)([A-Za-z0-9\\s]+) is playing at home with a fully fit squad") to "A(z) $1 hazai pályán játszik teljes kerettel",
+        Regex("(?i)Market odds also support a ([A-Za-z0-9\\s]+) win") to "A fogadási oddsok is a(z) $1 győzelmét támogatják"
     )
 
-    val sortedEntries = dict.entries.sortedByDescending { it.key.length }
+    for ((regex, replacement) in regexRules) {
+        result = result.replace(regex, replacement)
+    }
 
-    for ((en, hu) in sortedEntries) {
+    val dictionary = mapOf(
+        "unbeaten so far this season" to "ebben a szezonban még veretlen",
+        "playing confidently in their new" to "magabiztosan játszik az új",
+        "with strong recent form" to "jó formában van",
+        "in their last home match" to "a legutóbbi hazai meccsükön",
+        "away win against" to "vendéggyőzelem a következők ellen:",
+        "away win" to "vendéggyőzelem",
+        "home win" to "hazai győzelem",
+        "vendég győzelem" to "vendéggyőzelem",
+        "injury doubts" to "sérülési kétségek",
+        "key attackers sidelined" to "kulcstámadók hiányoznak",
+        "struggled away" to "szenvednek idegenben",
+        "this season" to "ebben a szezonban",
+        "head-to-head record" to "egymás elleni mérleg",
+        "slightly at home" to "kissé hazai pályán",
+        "market odds" to "fogadási oddsok",
+        "strongly support" to "határozottan támogatják",
+        "tactical insights suggest" to "a taktikai elemzés szerint",
+        "solid defense" to "stabil védelem",
+        "home advantage" to "hazai pálya előnye",
+        "possession-based" to "labdabirtoklásra épülő",
+        "less effective" to "kevésbé hatékony",
+        "away performances" to "idegenbeli teljesítmény",
+        "recently" to "mostanában",
+        "against" to "ellen",
+        "favors" to "favorizálja",
+        "win" to "győzelem",
+        "draw" to "döntetlen"
+    )
+
+    val sortedDict = dictionary.entries.sortedByDescending { it.key.length }
+    for ((en, hu) in sortedDict) {
         result = result.replace(Regex("(?i)" + Regex.escape(en)), hu)
     }
 
@@ -497,53 +518,68 @@ fun MatchesListScreen(navController: NavController) {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    fun fetchMatches() {
+    fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
         if (apiKey.isBlank()) {
             errorMessage = "Kérlek add meg a StatPal API kulcsodat a Beállításokban (⚙️)!"
             leagues = emptyList()
-        } else {
-            isLoading = true
-            errorMessage = null
-            coroutineScope.launch {
-                try {
-                    val dateParam = formatDateForApi(selectedCalendar)
+            return
+        }
 
-                    val response = if (isToday(selectedCalendar)) {
+        val dateParam = formatDateForApi(selectedCalendar)
+        val cacheKey = "matches_$dateParam"
+
+        if (!forceRefresh) {
+            val cached: List<StatPalLeague>? = ApiCacheManager.get(cacheKey)
+            if (cached != null) {
+                leagues = cached
+                errorMessage = null
+                isLoading = false
+                return
+            }
+        }
+
+        isLoading = true
+        errorMessage = null
+        coroutineScope.launch {
+            try {
+                val response = if (isToday(selectedCalendar)) {
+                    StatPalClient.service.getLiveMatches(apiKey, dateParam)
+                } else {
+                    try {
+                        StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                    } catch (_: Exception) {
                         StatPalClient.service.getLiveMatches(apiKey, dateParam)
-                    } else {
-                        try {
-                            StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
-                        } catch (_: Exception) {
-                            StatPalClient.service.getLiveMatches(apiKey, dateParam)
-                        }
                     }
-
-                    val rawLeagues = response.liveMatches?.league ?: emptyList()
-
-                    leagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
-                        val matchesOnDate = league.match.filter { match ->
-                            isMatchOnSelectedDate(match.date, selectedCalendar)
-                        }
-
-                        if (matchesOnDate.isNotEmpty()) {
-                            league
-                        } else null
-                    }
-
-                    if (leagues.isEmpty()) {
-                        errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
-                    }
-                } catch (e: Exception) {
-                    errorMessage = "Hiba a kapcsolódáskor: ${e.localizedMessage}"
-                } finally {
-                    isLoading = false
                 }
+
+                val rawLeagues = response.liveMatches?.league ?: emptyList()
+
+                val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
+                    val matchesOnDate = league.match.filter { match ->
+                        isMatchOnSelectedDate(match.date, selectedCalendar)
+                    }
+                    if (matchesOnDate.isNotEmpty()) league else null
+                }
+
+                leagues = validLeagues
+                if (validLeagues.isNotEmpty()) {
+                    ApiCacheManager.put(cacheKey, validLeagues)
+                } else {
+                    errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
+                }
+            } catch (e: Exception) {
+                errorMessage = "Hiba a kapcsolódáskor: ${e.localizedMessage}"
+            } finally {
+                isLoading = false
             }
         }
     }
 
+    // 400ms KÉSLELTETÉS DÁTUMVÁLTÁSNÁL (DEBOUNCE)
     LaunchedEffect(selectedCalendar) {
+        isLoading = true
+        delay(400L)
         fetchMatches()
     }
 
@@ -646,7 +682,7 @@ fun MatchesListScreen(navController: NavController) {
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(CardBackground)
-                        .clickable { fetchMatches() }
+                        .clickable { fetchMatches(forceRefresh = true) } // Kényszerített frissítés
                         .padding(8.dp)
                 ) {
                     Text(text = "🔄", fontSize = 14.sp)
@@ -982,6 +1018,9 @@ fun MatchRow(
     }
 }
 
+// ==========================================
+// MECCS RÉSZLETEI - LUSTA BETÖLTÉS ÉS CACHE
+// ==========================================
 @Composable
 fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
     val context = LocalContext.current
@@ -1002,53 +1041,90 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
     var predictionData by remember { mutableStateOf<PredictionData?>(null) }
     var isLoadingPrediction by remember { mutableStateOf(false) }
 
-    LaunchedEffect(match) {
+    // LUSTA BETÖLTÉS (LAZY LOADING): CSAK AKKOR TÖLT, AMIKOR AZ ADOTT FÜLRE LÉPSZ
+    LaunchedEffect(selectedTab, match) {
         val apiKey = getApiKey(context)
         val homeId = match.home?.id ?: ""
         val awayId = match.away?.id ?: ""
         val matchId = match.mainId ?: ""
 
-        if (apiKey.isNotBlank()) {
-            if (homeId.isNotBlank() && awayId.isNotBlank()) {
-                isLoadingH2H = true
-                coroutineScope.launch {
-                    try {
-                        val response = StatPalClient.service.getHeadToHead(apiKey, homeId, awayId)
-                        h2hMatches = response.headToHead?.recentMeetings?.match ?: emptyList()
-                    } catch (_: Exception) {} finally {
-                        isLoadingH2H = false
+        if (apiKey.isBlank()) return@LaunchedEffect
+
+        when (selectedTab) {
+            0 -> { // H2H
+                val cacheKey = "h2h_${homeId}_${awayId}"
+                val cached: List<H2HMatch>? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    h2hMatches = cached
+                } else if (homeId.isNotBlank() && awayId.isNotBlank() && h2hMatches.isEmpty()) {
+                    isLoadingH2H = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getHeadToHead(apiKey, homeId, awayId)
+                            val list = response.headToHead?.recentMeetings?.match ?: emptyList()
+                            h2hMatches = list
+                            ApiCacheManager.put(cacheKey, list)
+                        } catch (_: Exception) {} finally {
+                            isLoadingH2H = false
+                        }
                     }
                 }
             }
-
-            isLoadingInjuries = true
-            coroutineScope.launch {
-                try {
-                    val response = StatPalClient.service.getInjuriesAndSuspensions(apiKey)
-                    val allMatches = response.injuriesSuspensions?.league?.flatMap { it.match ?: emptyList() }
-                    injuryMatchData = allMatches?.find { it.mainId == match.mainId }
-                } catch (_: Exception) {} finally {
-                    isLoadingInjuries = false
-                }
-            }
-
-            if (matchId.isNotBlank()) {
-                isLoadingLineup = true
-                coroutineScope.launch {
-                    try {
-                        lineupData = StatPalClient.service.getTeamLineups(apiKey, matchId)
-                    } catch (_: Exception) {} finally {
-                        isLoadingLineup = false
+            1 -> { // HIÁNYZÓK
+                val cacheKey = "injuries_${matchId}"
+                val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    injuryMatchData = cached
+                } else if (injuryMatchData == null) {
+                    isLoadingInjuries = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getInjuriesAndSuspensions(apiKey)
+                            val allMatches = response.injuriesSuspensions?.league?.flatMap { it.match ?: emptyList() }
+                            val found = allMatches?.find { it.mainId == match.mainId }
+                            if (found != null) {
+                                injuryMatchData = found
+                                ApiCacheManager.put(cacheKey, found)
+                            }
+                        } catch (_: Exception) {} finally {
+                            isLoadingInjuries = false
+                        }
                     }
                 }
-
-                isLoadingPrediction = true
-                coroutineScope.launch {
-                    try {
-                        val response = StatPalClient.service.getMatchPrediction(apiKey, matchId)
-                        predictionData = response.prediction
-                    } catch (_: Exception) {} finally {
-                        isLoadingPrediction = false
+            }
+            2 -> { // KEZDŐK
+                val cacheKey = "lineup_${matchId}"
+                val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    lineupData = cached
+                } else if (matchId.isNotBlank() && lineupData == null) {
+                    isLoadingLineup = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getTeamLineups(apiKey, matchId)
+                            lineupData = response
+                            ApiCacheManager.put(cacheKey, response)
+                        } catch (_: Exception) {} finally {
+                            isLoadingLineup = false
+                        }
+                    }
+                }
+            }
+            3 -> { // AI TIPP
+                val cacheKey = "prediction_${matchId}"
+                val cached: PredictionData? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    predictionData = cached
+                } else if (matchId.isNotBlank() && predictionData == null) {
+                    isLoadingPrediction = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getMatchPrediction(apiKey, matchId)
+                            predictionData = response.prediction
+                            response.prediction?.let { ApiCacheManager.put(cacheKey, it) }
+                        } catch (_: Exception) {} finally {
+                            isLoadingPrediction = false
+                        }
                     }
                 }
             }
