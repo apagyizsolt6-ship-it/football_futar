@@ -1233,7 +1233,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -1559,6 +1559,74 @@ fun MatchDetailScreen(
             }
             5 -> {
                 OddsTab(match, prematchOddsMatch, isLoadingOdds, betSlipItems, colors, onToggleOdds)
+            }
+            6 -> {
+                TimelineTab(match, colors)
+            }
+        }
+    }
+}
+
+@Composable
+fun TimelineTab(match: StatPalMatch, colors: AppColors) {
+    val events = match.events?.event.orEmpty()
+    if (events.isEmpty()) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text("Ehhez a mérkőzéshez még nincsenek események (idővonal).", color = colors.textMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
+            }
+        }
+        return
+    }
+
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(events) { event ->
+            val type = event.type?.lowercase() ?: ""
+            val minute = event.minute ?: ""
+            val extraMin = event.extraMin ?: ""
+            val minStr = if (extraMin.isNotBlank()) "$minute+$extraMin'" else "$minute'"
+            val playerName = event.playerName ?: event.player ?: "-"
+            val assist = event.assistPlayer ?: ""
+            val result = event.result ?: ""
+
+            val icon = when {
+                type.contains("goal") -> "⚽"
+                type.contains("yellow") -> "🟨"
+                type.contains("red") -> "🟥"
+                type.contains("sub") -> "🔄"
+                else -> "⏱️"
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Text(text = minStr, color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(45.dp))
+                        Text(text = icon, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 8.dp))
+                        Column {
+                            Text(text = playerName, color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                            if (assist.isNotBlank()) {
+                                Text(text = "Gólpassz: $assist", color = colors.textMuted, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    if (result.isNotBlank()) {
+                        Text(text = result, color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
             }
         }
     }
