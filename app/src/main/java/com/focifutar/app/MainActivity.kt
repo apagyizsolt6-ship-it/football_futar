@@ -6,11 +6,13 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +76,13 @@ val LightColors = AppColors(
     border = Color(0xFFE2E8F0)
 )
 
+data class BetSlipItem(
+    val matchId: String,
+    val matchTitle: String,
+    val choiceName: String,
+    val odds: Double
+)
+
 fun isDarkModeSaved(context: Context): Boolean {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getBoolean("is_dark_mode", true)
@@ -84,9 +93,6 @@ fun saveDarkMode(context: Context, isDark: Boolean) {
     prefs.edit().putBoolean("is_dark_mode", isDark).apply()
 }
 
-// ==========================================
-// KEDVENC BAJNOKSÁGOK (PINNED LEAGUES)
-// ==========================================
 fun getFavoriteLeagueIds(context: Context): Set<String> {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getStringSet("favorite_leagues", emptySet()) ?: emptySet()
@@ -209,6 +215,43 @@ fun TeamLogo(
     }
 }
 
+@Composable
+fun FormIndicator(formStr: String, colors: AppColors) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val chars = formStr.take(5).uppercase().toCharArray()
+        for (c in chars) {
+            val color = when (c) {
+                'W', 'G' -> Color(0xFF22C55E)
+                'D' -> Color(0xFFEAB308)
+                'L', 'V' -> Color(0xFFEF4444)
+                else -> colors.textMuted
+            }
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(color),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = when (c) {
+                        'W', 'G' -> "GY"
+                        'D' -> "D"
+                        'L', 'V' -> "V"
+                        else -> "-"
+                    },
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
 fun formatDateForApi(cal: Calendar): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
 }
@@ -218,10 +261,13 @@ fun formatDateForDisplay(cal: Calendar): String {
     return sdf.format(cal.time).uppercase()
 }
 
+fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
+    return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+           cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+}
+
 fun isToday(cal: Calendar): Boolean {
-    val today = Calendar.getInstance()
-    return cal.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
-           cal.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
+    return isSameDay(cal, Calendar.getInstance())
 }
 
 fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
@@ -449,9 +495,6 @@ fun translateChoice(choice: String?): String {
     }
 }
 
-// ==========================================
-// 100%-OS TELJES MINTAILLESZTŐ AI ELEMZÉS FORDÍTÓ
-// ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
     var result: String = text.trim()
@@ -564,22 +607,48 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(isDarkModeSaved(context)) }
             val colors = if (isDarkMode) DarkColors else LightColors
 
+            var betSlipItems by remember { mutableStateOf<List<BetSlipItem>>(emptyList()) }
+
             MaterialTheme {
                 val navController = rememberNavController()
 
-                NavHost(navController = navController, startDestination = "matches_list") {
-                    composable("matches_list") {
-                        MatchesListScreen(navController, isDarkMode, colors) { newMode ->
-                            isDarkMode = newMode
-                            saveDarkMode(context, newMode)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    NavHost(navController = navController, startDestination = "matches_list") {
+                        composable("matches_list") {
+                            MatchesListScreen(navController, isDarkMode, colors) { newMode ->
+                                isDarkMode = newMode
+                                saveDarkMode(context, newMode)
+                            }
+                        }
+                        composable("api_settings") {
+                            ApiSettingsScreen(navController, colors)
+                        }
+                        composable("match_detail") {
+                            selectedMatchGlobal?.let { match ->
+                                MatchDetailScreen(match, navController, colors, betSlipItems) { item ->
+                                    val exists = betSlipItems.find { it.matchId == item.matchId && it.choiceName == item.choiceName }
+                                    betSlipItems = if (exists != null) {
+                                        betSlipItems.filter { !(it.matchId == item.matchId && it.choiceName == item.choiceName) }
+                                    } else {
+                                        betSlipItems.filter { it.matchId != item.matchId } + item
+                                    }
+                                }
+                            }
                         }
                     }
-                    composable("api_settings") {
-                        ApiSettingsScreen(navController, colors)
-                    }
-                    composable("match_detail") {
-                        selectedMatchGlobal?.let { match ->
-                            MatchDetailScreen(match, navController, colors)
+
+                    // FOGADÁSI SZELVÉNY ALSÓ SÁV
+                    if (betSlipItems.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                        ) {
+                            BetSlipBar(
+                                items = betSlipItems,
+                                colors = colors,
+                                onClear = { betSlipItems = emptyList() }
+                            )
                         }
                     }
                 }
@@ -610,6 +679,8 @@ fun MatchesListScreen(
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
@@ -655,6 +726,26 @@ fun MatchesListScreen(
                     if (matchesOnDate.isNotEmpty()) league else null
                 }
 
+                // GÓL ÉRTESÍTÉSEK ELLENŐRZÉSE
+                val newScoresMap = mutableMapOf<String, String>()
+                validLeagues.flatMap { it.match }.forEach { m ->
+                    val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
+                    val scoreStr = "${m.home?.goals ?: "0"}-${m.away?.goals ?: "0"}"
+                    newScoresMap[id] = scoreStr
+
+                    if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
+                        val oldScore = previousScoresMap[id]
+                        if (oldScore != null && oldScore != scoreStr) {
+                            Toast.makeText(
+                                context,
+                                "⚽ GÓL! ${m.home?.name} $scoreStr ${m.away?.name}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+                previousScoresMap = newScoresMap
+
                 leagues = validLeagues
                 if (validLeagues.isNotEmpty()) {
                     ApiCacheManager.put(cacheKey, validLeagues)
@@ -699,11 +790,15 @@ fun MatchesListScreen(
             baseList.filter { isTopLeague(it.name) }
         } else baseList
 
-        // RÖGZÍTETT BAJNOKSÁGOK ELŐRE RENDERELÉSE
         topFiltered.sortedByDescending { league ->
             val key = league.id ?: league.name ?: ""
             favoriteLeagueKeys.contains(key)
         }
+    }
+
+    val featuredMatch = remember(leagues) {
+        leagues.flatMap { it.match }.firstOrNull { isTopLeague(it.home?.name) || isLiveMatch(it) }
+            ?: leagues.flatMap { it.match }.firstOrNull()
     }
 
     val favoriteMatchesList = remember(leagues, favoriteIds) {
@@ -720,29 +815,30 @@ fun MatchesListScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
+        // FELSŐ SÁV
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "FOOTBALL FUTÁR",
                 color = colors.accentPrimary,
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Black
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(if (isSearchOpen) colors.accentPrimary else colors.cardBackground)
                         .clickable { isSearchOpen = !isSearchOpen }
-                        .padding(8.dp)
+                        .padding(6.dp)
                 ) {
-                    Text(text = "🔍", fontSize = 13.sp)
+                    Text(text = "🔍", fontSize = 12.sp)
                 }
 
                 Box(
@@ -750,15 +846,15 @@ fun MatchesListScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isOnlyLiveFilter) colors.accentRed else colors.cardBackground)
                         .clickable { isOnlyLiveFilter = !isOnlyLiveFilter }
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 6.dp, vertical = 5.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "🔴", fontSize = 11.sp)
+                        Text(text = "🔴", fontSize = 10.sp)
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = if (totalLiveCount > 0) "ÉLŐ ($totalLiveCount)" else "ÉLŐ",
                             color = if (isOnlyLiveFilter) Color.White else colors.textPrimary,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -769,14 +865,31 @@ fun MatchesListScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isTopLeaguesFilter) colors.accentPrimary else colors.cardBackground)
                         .clickable { isTopLeaguesFilter = !isTopLeaguesFilter }
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 6.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = "🏆 TOP",
                         color = if (isTopLeaguesFilter) Color.White else colors.textPrimary,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+
+                // VISSZATETT KINYIT / ÖSSZECSUK IKON (📂 / 📁)
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(colors.cardBackground)
+                        .clickable {
+                            collapsedLeagueIds = if (collapsedLeagueIds.size == leagues.size && leagues.isNotEmpty()) {
+                                emptySet()
+                            } else {
+                                leagues.mapNotNull { it.id ?: it.name }.toSet()
+                            }
+                        }
+                        .padding(6.dp)
+                ) {
+                    Text(text = if (collapsedLeagueIds.isNotEmpty() && collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 12.sp)
                 }
 
                 Box(
@@ -784,9 +897,9 @@ fun MatchesListScreen(
                         .clip(CircleShape)
                         .background(colors.cardBackground)
                         .clickable { onToggleDarkMode(!isDarkMode) }
-                        .padding(8.dp)
+                        .padding(6.dp)
                 ) {
-                    Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 13.sp)
+                    Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 12.sp)
                 }
 
                 Box(
@@ -794,9 +907,9 @@ fun MatchesListScreen(
                         .clip(CircleShape)
                         .background(colors.cardBackground)
                         .clickable { fetchMatches(forceRefresh = true) }
-                        .padding(8.dp)
+                        .padding(6.dp)
                 ) {
-                    Text(text = "🔄", fontSize = 13.sp)
+                    Text(text = "🔄", fontSize = 12.sp)
                 }
 
                 Box(
@@ -804,9 +917,9 @@ fun MatchesListScreen(
                         .clip(CircleShape)
                         .background(colors.cardBackground)
                         .clickable { navController.navigate("api_settings") }
-                        .padding(8.dp)
+                        .padding(6.dp)
                 ) {
-                    Text(text = "⚙️", fontSize = 13.sp)
+                    Text(text = "⚙️", fontSize = 12.sp)
                 }
             }
         }
@@ -827,87 +940,16 @@ fun MatchesListScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
             )
         }
 
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-            shape = RoundedCornerShape(0.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = {
-                    val newCal = Calendar.getInstance().apply {
-                        time = selectedCalendar.time
-                        add(Calendar.DAY_OF_YEAR, -1)
-                    }
-                    selectedCalendar = newCal
-                }) {
-                    Text("◄", color = colors.accentPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.background)
-                        .clickable {
-                            val year = selectedCalendar.get(Calendar.YEAR)
-                            val month = selectedCalendar.get(Calendar.MONTH)
-                            val day = selectedCalendar.get(Calendar.DAY_OF_MONTH)
-
-                            DatePickerDialog(context, { _, selectedYear, selectedMonth, selectedDay ->
-                                val newCal = Calendar.getInstance()
-                                newCal.set(selectedYear, selectedMonth, selectedDay)
-                                selectedCalendar = newCal
-                            }, year, month, day).show()
-                        }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("📅", fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = formatDateForDisplay(selectedCalendar),
-                        color = colors.textPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!isToday(selectedCalendar)) {
-                        Text(
-                            text = "MA",
-                            color = colors.accentYellow,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(colors.cardBackground)
-                                .clickable { selectedCalendar = Calendar.getInstance() }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        )
-                    }
-
-                    IconButton(onClick = {
-                        val newCal = Calendar.getInstance().apply {
-                            time = selectedCalendar.time
-                            add(Calendar.DAY_OF_YEAR, 1)
-                        }
-                        selectedCalendar = newCal
-                    }) {
-                        Text("►", color = colors.accentPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
+        // VÍZSZINTES DÁTUMVÁLASZTÓ CSÍK (DATE STRIP)
+        DateStrip(
+            selectedCalendar = selectedCalendar,
+            onDateSelected = { selectedCalendar = it },
+            colors = colors
+        )
 
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -930,8 +972,18 @@ fun MatchesListScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp)
+                contentPadding = PaddingValues(bottom = 80.dp)
             ) {
+                // A NAP RANGADÓJA BANNER
+                if (featuredMatch != null && searchQuery.isBlank() && !isOnlyLiveFilter) {
+                    item {
+                        FeaturedMatchBanner(featuredMatch, colors) {
+                            selectedMatchGlobal = featuredMatch
+                            navController.navigate("match_detail")
+                        }
+                    }
+                }
+
                 if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter) {
                     item {
                         LeagueHeader(
@@ -1010,6 +1062,155 @@ fun MatchesListScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// VÍZSZINTES DÁTUMVÁLASZTÓ COMPOSABLE
+// ==========================================
+@Composable
+fun DateStrip(
+    selectedCalendar: Calendar,
+    onDateSelected: (Calendar) -> Unit,
+    colors: AppColors
+) {
+    val context = LocalContext.current
+    val dateList = remember(selectedCalendar) {
+        val list = mutableListOf<Pair<String, Calendar>>()
+        val today = Calendar.getInstance()
+
+        for (i in -3..3) {
+            val cal = Calendar.getInstance().apply {
+                time = today.time
+                add(Calendar.DAY_OF_YEAR, i)
+            }
+            val label = when (i) {
+                -1 -> "TEGNAP"
+                0 -> "MA"
+                1 -> "HOLNAP"
+                else -> SimpleDateFormat("EEE", Locale("hu", "HU")).format(cal.time).uppercase()
+            }
+            val dateSub = SimpleDateFormat("MM.dd.", Locale.US).format(cal.time)
+            list.add(Pair("$label\n$dateSub", cal))
+        }
+        list
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.cardBackground)
+            .padding(vertical = 4.dp, horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(dateList.size) { index ->
+                val (label, cal) = dateList[index]
+                val isSelected = isSameDay(cal, selectedCalendar)
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) colors.accentPrimary else colors.background)
+                        .clickable { onDateSelected(cal) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) Color.White else colors.textPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        IconButton(onClick = {
+            val year = selectedCalendar.get(Calendar.YEAR)
+            val month = selectedCalendar.get(Calendar.MONTH)
+            val day = selectedCalendar.get(Calendar.DAY_OF_MONTH)
+
+            DatePickerDialog(context, { _, selectedYear, selectedMonth, selectedDay ->
+                val newCal = Calendar.getInstance()
+                newCal.set(selectedYear, selectedMonth, selectedDay)
+                onDateSelected(newCal)
+            }, year, month, day).show()
+        }) {
+            Text("📅", fontSize = 16.sp)
+        }
+    }
+}
+
+// ==========================================
+// A NAP RANGADÓJA BANNER
+// ==========================================
+@Composable
+fun FeaturedMatchBanner(
+    match: StatPalMatch,
+    colors: AppColors,
+    onClick: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .border(1.dp, colors.accentYellow.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🌟 A NAP RANGADÓJA", color = colors.accentYellow, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                Text(
+                    text = formatToLocalTime(match.date, match.status ?: match.time ?: ""),
+                    color = if (isLiveMatch(match)) colors.accentRed else colors.accentPrimary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                    TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(32.dp), fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(match.home?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+                }
+
+                val homeG = match.home?.goals?.trim()
+                val awayG = match.away?.goals?.trim()
+                val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
+
+                Text(
+                    text = if (hasValidGoals) "$homeG - $awayG" else "VS",
+                    color = colors.accentPrimary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                    TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(32.dp), fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(match.away?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                 }
             }
         }
@@ -1180,10 +1381,16 @@ fun MatchRow(
 }
 
 // ==========================================
-// MECCS RÉSZLETEI - TABELLA ÉS ODDS FÜLEKKEL
+// MECCS RÉSZLETEI
 // ==========================================
 @Composable
-fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors: AppColors) {
+fun MatchDetailScreen(
+    match: StatPalMatch,
+    navController: NavController,
+    colors: AppColors,
+    betSlipItems: List<BetSlipItem>,
+    onToggleOdds: (BetSlipItem) -> Unit
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -1334,14 +1541,11 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors:
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        TeamLogo(
-                            team = match.home,
-                            colors = colors,
-                            modifier = Modifier.size(40.dp),
-                            fontSize = 18.sp
-                        )
+                        TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(40.dp), fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(match.home?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        FormIndicator("WWDLW", colors)
                     }
 
                     Text(
@@ -1352,14 +1556,11 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors:
                     )
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        TeamLogo(
-                            team = match.away,
-                            colors = colors,
-                            modifier = Modifier.size(40.dp),
-                            fontSize = 18.sp
-                        )
+                        TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(40.dp), fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(match.away?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        FormIndicator("DLWWL", colors)
                     }
                 }
             }
@@ -1482,11 +1683,11 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors:
                     }
                 }
             }
-            4 -> { // TABELLA FÜL
+            4 -> {
                 StandingsTab(match.home?.name ?: "Hazai", match.away?.name ?: "Vendég", colors)
             }
-            5 -> { // ODDS FÜL
-                OddsTab(match.home?.name ?: "Hazai", match.away?.name ?: "Vendég", colors)
+            5 -> {
+                OddsTab(match, betSlipItems, colors, onToggleOdds)
             }
         }
     }
@@ -1504,7 +1705,7 @@ fun StandingsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
             .border(1.dp, colors.border, RoundedCornerShape(12.dp))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text("BAJNOKI TABELLA (PÉLDA)", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("BAJNOKI TABELLA", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
 
             Row(
                 modifier = Modifier
@@ -1553,10 +1754,18 @@ fun StandingsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
 }
 
 // ==========================================
-// ODDS KILISTÁZÓ COMPOSABLE
+// ODDS ÉS FOGADÁSI SZELVÉNY COMPOSABLE
 // ==========================================
 @Composable
-fun OddsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
+fun OddsTab(
+    match: StatPalMatch,
+    betSlipItems: List<BetSlipItem>,
+    colors: AppColors,
+    onToggleOdds: (BetSlipItem) -> Unit
+) {
+    val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+    val matchTitle = "${match.home?.name} vs ${match.away?.name}"
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -1571,9 +1780,19 @@ fun OddsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OddsBox("1 ($homeTeam)", "2.10", colors, modifier = Modifier.weight(1f))
-                    OddsBox("X (Döntetlen)", "3.40", colors, modifier = Modifier.weight(1f))
-                    OddsBox("2 ($awayTeam)", "3.20", colors, modifier = Modifier.weight(1f))
+                    val is1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai (1)" }
+                    val isX = betSlipItems.any { it.matchId == matchId && it.choiceName == "Döntetlen (X)" }
+                    val is2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég (2)" }
+
+                    OddsBox("1 (Hazai)", "2.10", isSelected = is1, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai (1)", 2.10))
+                    }
+                    OddsBox("X (Döntetlen)", "3.40", isSelected = isX, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Döntetlen (X)", 3.40))
+                    }
+                    OddsBox("2 (Vendég)", "3.20", isSelected = is2, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég (2)", 3.20))
+                    }
                 }
             }
         }
@@ -1591,27 +1810,15 @@ fun OddsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OddsBox("Több mint 2.5 gól", "1.85", colors, modifier = Modifier.weight(1f))
-                    OddsBox("Kevesebb mint 2.5", "1.95", colors, modifier = Modifier.weight(1f))
-                }
-            }
-        }
+                    val isOver = betSlipItems.any { it.matchId == matchId && it.choiceName == "Több mint 2.5 gól" }
+                    val isUnder = betSlipItems.any { it.matchId == matchId && it.choiceName == "Kevesebb mint 2.5" }
 
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("MINDKÉT CSAPAT SZEREZ GÓLT (BTS)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OddsBox("IGEN", "1.70", colors, modifier = Modifier.weight(1f))
-                    OddsBox("NEM", "2.05", colors, modifier = Modifier.weight(1f))
+                    OddsBox("Több mint 2.5 gól", "1.85", isSelected = isOver, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Több mint 2.5 gól", 1.85))
+                    }
+                    OddsBox("Kevesebb mint 2.5", "1.95", isSelected = isUnder, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Kevesebb mint 2.5", 1.95))
+                    }
                 }
             }
         }
@@ -1619,19 +1826,140 @@ fun OddsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
 }
 
 @Composable
-fun OddsBox(title: String, odds: String, colors: AppColors, modifier: Modifier = Modifier) {
+fun OddsBox(
+    title: String,
+    odds: String,
+    isSelected: Boolean,
+    colors: AppColors,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(colors.background)
-            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            .background(if (isSelected) colors.accentPrimary else colors.background)
+            .border(1.dp, if (isSelected) colors.accentPrimary else colors.border, RoundedCornerShape(8.dp))
+            .clickable { onClick() }
             .padding(10.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, color = colors.textMuted, fontSize = 10.sp, maxLines = 1)
+            Text(title, color = if (isSelected) Color.White else colors.textMuted, fontSize = 10.sp, maxLines = 1)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(odds, color = colors.accentPrimary, fontWeight = FontWeight.Black, fontSize = 15.sp)
+            Text(odds, color = if (isSelected) Color.White else colors.accentPrimary, fontWeight = FontWeight.Black, fontSize = 15.sp)
+        }
+    }
+}
+
+@Composable
+fun BetSlipBar(
+    items: List<BetSlipItem>,
+    colors: AppColors,
+    onClear: () -> Unit
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    var stakeInput by remember { mutableStateOf("1000") }
+
+    val totalOdds = remember(items) {
+        items.fold(1.0) { acc, item -> acc * item.odds }
+    }
+    val stake = stakeInput.toDoubleOrNull() ?: 1000.0
+    val potentialWin = totalOdds * stake
+
+    AnimatedVisibility(
+        visible = items.isNotEmpty(),
+        enter = slideInVertically(initialOffsetY = { it }),
+        exit = slideOutVertically(targetOffsetY = { it })
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.accentPrimary, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { isExpanded = !isExpanded }
+                    ) {
+                        Text("🎟️ FOGADÁSI SZELVÉNY (${items.size})", color = colors.accentPrimary, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isExpanded) "▼" else "▲", color = colors.textMuted, fontSize = 11.sp)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = String.format(Locale.US, "Eredő odds: %.2f", totalOdds),
+                            color = colors.accentYellow,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "❌",
+                            fontSize = 12.sp,
+                            modifier = Modifier.clickable { onClear() }
+                        )
+                    }
+                }
+
+                if (isExpanded) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("${item.matchTitle}: ${item.choiceName}", color = colors.textPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Text(String.format(Locale.US, "%.2f", item.odds), color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+
+                        Divider(color = colors.border, modifier = Modifier.padding(vertical = 4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Tét (Ft):", color = colors.textMuted, fontSize = 12.sp)
+                            OutlinedTextField(
+                                value = stakeInput,
+                                onValueChange = { stakeInput = it },
+                                singleLine = true,
+                                modifier = Modifier.width(100.dp).height(48.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = colors.accentPrimary,
+                                    unfocusedBorderColor = colors.border,
+                                    focusedTextColor = colors.textPrimary,
+                                    unfocusedTextColor = colors.textPrimary
+                                )
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Várható nyeremény:", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(
+                                String.format(Locale.US, "%,.0f Ft", potentialWin),
+                                color = colors.accentPrimary,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
