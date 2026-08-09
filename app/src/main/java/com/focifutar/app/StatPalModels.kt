@@ -69,7 +69,6 @@ class StatPalLiveMatchesResponseDeserializer : JsonDeserializer<StatPalLiveMatch
         if (json == null || !json.isJsonObject) return StatPalLiveMatchesResponse(null)
 
         val obj = json.asJsonObject
-        // Megkeressük azt a kulcsot, ami "matches_" paranccsal kezdődik, vagy fallbackként bármilyen konténert
         val containerEntry = obj.entrySet().find { it.key.startsWith("matches_") } ?: obj.entrySet().firstOrNull()
         
         var container: StatPalLiveMatchesContainer? = null
@@ -113,6 +112,7 @@ data class StatPalMatch(
     val venue: String? = null,
     val home: StatPalTeam? = null,
     val away: StatPalTeam? = null,
+    val events: MatchEventsContainer? = null,
     val ht: StatPalScore? = null,
     val ft: StatPalScore? = null,
     val et: StatPalScore? = null,
@@ -120,6 +120,24 @@ data class StatPalMatch(
     @SerializedName("has_live_stats") val hasLiveStats: String? = null,
     @SerializedName("inplay_odds_running") val inplayOddsRunning: String? = null,
     @SerializedName("match_context") val matchContext: StatPalContext? = null
+)
+
+// ==========================================
+// MECCS ESEMÉNYEK (TIMELINE)
+// ==========================================
+data class MatchEventsContainer(
+    val event: List<MatchEventItem>? = emptyList()
+)
+
+data class MatchEventItem(
+    val id: String? = null,
+    val type: String? = null,
+    val team: String? = null,
+    val minute: String? = null,
+    @SerializedName("extra_min") val extraMin: String? = null,
+    val player: String? = null,
+    @SerializedName("assist_player") val assistPlayer: String? = null,
+    val result: String? = null
 )
 
 data class StatPalTeam(
