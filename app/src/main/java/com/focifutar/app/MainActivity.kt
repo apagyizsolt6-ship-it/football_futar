@@ -85,6 +85,25 @@ fun saveDarkMode(context: Context, isDark: Boolean) {
 }
 
 // ==========================================
+// KEDVENC BAJNOKSÁGOK (PINNED LEAGUES)
+// ==========================================
+fun getFavoriteLeagueIds(context: Context): Set<String> {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getStringSet("favorite_leagues", emptySet()) ?: emptySet()
+}
+
+fun toggleFavoriteLeague(context: Context, leagueKey: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val current = prefs.getStringSet("favorite_leagues", emptySet())?.toMutableSet() ?: mutableSetOf()
+    if (current.contains(leagueKey)) {
+        current.remove(leagueKey)
+    } else {
+        current.add(leagueKey)
+    }
+    prefs.edit().putStringSet("favorite_leagues", current).apply()
+}
+
+// ==========================================
 // API TÁROLÓ (CACHE MANAGER)
 // ==========================================
 object ApiCacheManager {
@@ -292,6 +311,17 @@ fun isAllowedLeague(leagueName: String?): Boolean {
     return forbiddenKeywords.none { nameLower.contains(it) }
 }
 
+fun isTopLeague(leagueName: String?): Boolean {
+    if (leagueName.isNullOrBlank()) return false
+    val l = leagueName.uppercase()
+    val topKeywords = listOf(
+        "NB I", "PREMIER LEAGUE", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1",
+        "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CONFERENCE LEAGUE", "EREDIVISIE",
+        "PRIMEIRA LIGA", "SUPER LIG", "EKSTRAKLASA", "COPPA ITALIA"
+    )
+    return topKeywords.any { l.contains(it) }
+}
+
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
 
@@ -419,24 +449,26 @@ fun translateChoice(choice: String?): String {
     }
 }
 
+// ==========================================
+// 100%-OS TELJES MINTAILLESZTŐ AI ELEMZÉS FORDÍTÓ
+// ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
     var result: String = text.trim()
 
     val regexRules = listOf(
+        Regex("(?i)([A-Za-z0-9\\s]+) has the home advantage and a stronger recent form in the ([A-Za-z0-9\\s]+) compared to ([A-Za-z0-9\\s]+)") to "A(z) $1 csapata élvezi a hazai pálya előnyét és jobb formában van a(z) $2 bajnokságban a(z) $3 csapatához képest",
+        Regex("(?i)who have drawn their last two league matches") to "akik döntetlent játszottak a legutóbbi két bajnoki mérkőzésükön",
+        Regex("(?i)showed offensive strength recently, scoring multiple goals at home") to "támadásban meggyőző teljesítményt nyújtott mostanában, több gólt szerezve hazai pályán",
+        Regex("(?i)while ([A-Za-z0-9\\s]+) are missing a key defender due to suspension") to "míg a(z) $1 csapatából eltiltás miatt hiányzik egy kulcsfontossági védő",
+        Regex("(?i)Despite some fatigue and squad rotation concerns for ([A-Za-z0-9\\s]+) after recent European fixtures") to "Noha a legutóbbi európai kupamérkőzések után némi fáradtság és rotáció várható a(z) $1 csapatánál",
+        Regex("(?i)their home form and historical head-to-head edge support a home victory") to "a hazai formájuk és a korábbi egymás elleni mérlegük is hazai győzelmet valószínűsít",
         Regex("(?i)([A-Za-z0-9\\s]+) is unbeaten so far this season") to "A(z) $1 ebben a szezonban még veretlen",
         Regex("(?i)playing confidently in their new ([A-Za-z0-9\\s]+)") to "magabiztosan játszik az új $1 stadionban",
         Regex("(?i)with strong recent form including a (\\d+-\\d+) win in their last home match") to "meggyőző formában van, beleértve a legutóbbi hazai $1-es győzelmét",
         Regex("(?i)and a (\\d+-\\d+) away win against ([A-Za-z0-9\\s]+) recently") to "és a legutóbbi $1-es vendéggyőzelmét a(z) $2 ellen",
-        Regex("(?i)and a (\\d+-\\d+) vendég győzelem against ([A-Za-z0-9\\s]+) recently") to "és a legutóbbi $1-es vendéggyőzelmét a(z) $2 ellen",
-        Regex("(?i)([A-Za-z0-9\\s]+) has injury doubts for their goalkeeper and key attackers sidelined") to "A(z) $1 csapatánál a kapus játéka kérdéses, a kulcstámadók pedig sérültek",
-        Regex("(?i)and they have struggled away with only one away win this season") to "és idegenben szenvednek, mindössze egy vendéggyőzelemmel ebben a szezonban",
-        Regex("(?i)and they have struggled away with only one vendég győzelem this season") to "és idegenben szenvednek, mindössze egy vendéggyőzelemmel ebben a szezonban",
-        Regex("(?i)The head-to-head record favors ([A-Za-z0-9\\s]+) slightly at home") to "Az egymás elleni mérleg kissé a(z) $1 csapatának kedvez hazai pályán",
-        Regex("(?i)and market odds strongly support a ([A-Za-z0-9\\s]+) win") to "és a fogadási oddsok is határozottan a(z) $1 győzelmét támogatják",
         Regex("(?i)Tactical insights suggest ([A-Za-z0-9\\s']+)'s solid defense and home advantage will be key against ([A-Za-z0-9\\s']+)'s possession-based but less effective away performances") to "A taktikai elemzés szerint a hazaiak stabil védelme és a pályaelőny kulcsfontos lesz a vendégek labdabirtoklásra épülő, de idegenben kevésbé hatékony játéka ellen",
         Regex("(?i)([A-Za-z0-9\\s]+) has a strong historical head-to-head advantage over ([A-Za-z0-9\\s]+)") to "A(z) $1 jelentős egymás elleni előnnyel rendelkezik a(z) $2 ellen",
-        Regex("(?i)([A-Za-z0-9\\s]+) and ([A-Za-z0-9\\s]+) have a closely matched recent head-to-head record") to "A(z) $1 és a(z) $2 kiegyenlített egymás elleni mérleggel rendelkeznek",
         Regex("(?i)Given these factors, a draw is the most likely outcome") to "Ezek alapján a döntetlen a legvalószínűbb kimenetel",
         Regex("(?i)([A-Za-z0-9\\s]+) is playing at home with a fully fit squad") to "A(z) $1 hazai pályán játszik teljes kerettel",
         Regex("(?i)Market odds also support a ([A-Za-z0-9\\s]+) win") to "A fogadási oddsok is a(z) $1 győzelmét támogatják"
@@ -447,6 +479,15 @@ fun translateReasoning(text: String?): String {
     }
 
     val dictionary = mapOf(
+        "has the home advantage and a stronger recent form" to "hazai pályán játszik és jobb formát mutat",
+        "in the top Hungarian league compared to" to "a magyar élvonalban a következőkkel szemben:",
+        "who have drawn their last two league matches" to "akik az utolsó két meccsükön döntetlent játszottak",
+        "showed offensive strength mostanában" to "jó támadójátékot mutatott mostanában",
+        "scoring multiple goals at home" to "több gólt szerezve hazai pályán",
+        "missing a key defender due to suspension" to "eltiltás miatt hiányzik egy kulcsvédője",
+        "Despite some fatigue and squad rotation concerns for" to "Némi fáradtság és rotáció ellenére a következőknek:",
+        "after recent European fixtures" to "a legutóbbi európai meccsek után",
+        "their home form and historical head-to-head edge support a home victory" to "hazai formájuk és az egymás elleni mérlegük is hazai győzelmet sejtet.",
         "unbeaten so far this season" to "ebben a szezonban még veretlen",
         "playing confidently in their new" to "magabiztosan játszik az új",
         "with strong recent form" to "jó formában van",
@@ -454,12 +495,12 @@ fun translateReasoning(text: String?): String {
         "away win against" to "vendéggyőzelem a következők ellen:",
         "away win" to "vendéggyőzelem",
         "home win" to "hazai győzelem",
-        "vendég győzelem" to "vendéggyőzelem",
         "injury doubts" to "sérülési kétségek",
         "key attackers sidelined" to "kulcstámadók hiányoznak",
         "struggled away" to "szenvednek idegenben",
         "this season" to "ebben a szezonban",
         "head-to-head record" to "egymás elleni mérleg",
+        "head-to-head edge" to "egymás elleni előny",
         "slightly at home" to "kissé hazai pályán",
         "market odds" to "fogadási oddsok",
         "strongly support" to "határozottan támogatják",
@@ -469,9 +510,18 @@ fun translateReasoning(text: String?): String {
         "possession-based" to "labdabirtoklásra épülő",
         "less effective" to "kevésbé hatékony",
         "away performances" to "idegenbeli teljesítmény",
+        "squad rotation concerns" to "keret-rotációs aggályok",
+        "European fixtures" to "európai kupameccsek",
+        "home victory" to "hazai győzelem",
+        "away victory" to "vendéggyőzelem",
         "recently" to "mostanában",
         "against" to "ellen",
         "favors" to "favorizálja",
+        "has the" to "rendelkezik a",
+        "and a" to "és egy",
+        "due to" to "miatt",
+        "while" to "míg",
+        "who have" to "akik",
         "win" to "győzelem",
         "draw" to "döntetlen"
     )
@@ -550,9 +600,11 @@ fun MatchesListScreen(
 
     var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isOnlyLiveFilter by remember { mutableStateOf(false) }
+    var isTopLeaguesFilter by remember { mutableStateOf(false) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
+    var favoriteLeagueKeys by remember { mutableStateOf(getFavoriteLeagueIds(context)) }
 
     var leagues by remember { mutableStateOf<List<StatPalLeague>>(emptyList()) }
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -627,8 +679,8 @@ fun MatchesListScreen(
         leagues.sumOf { league -> league.match.count { isLiveMatch(it) } }
     }
 
-    val filteredLeagues = remember(leagues, isOnlyLiveFilter, searchQuery) {
-        leagues.mapNotNull { league ->
+    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, searchQuery, favoriteLeagueKeys) {
+        val baseList = leagues.mapNotNull { league ->
             val matches = league.match
             val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
             val matchesAfterSearch = if (searchQuery.isNotBlank()) {
@@ -641,6 +693,16 @@ fun MatchesListScreen(
             } else matchesAfterLive
 
             if (matchesAfterSearch.isNotEmpty()) league else null
+        }
+
+        val topFiltered = if (isTopLeaguesFilter) {
+            baseList.filter { isTopLeague(it.name) }
+        } else baseList
+
+        // RÖGZÍTETT BAJNOKSÁGOK ELŐRE RENDERELÉSE
+        topFiltered.sortedByDescending { league ->
+            val key = league.id ?: league.name ?: ""
+            favoriteLeagueKeys.contains(key)
         }
     }
 
@@ -661,18 +723,18 @@ fun MatchesListScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "FOOTBALL FUTÁR",
                 color = colors.accentPrimary,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Black
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -680,7 +742,7 @@ fun MatchesListScreen(
                         .clickable { isSearchOpen = !isSearchOpen }
                         .padding(8.dp)
                 ) {
-                    Text(text = "🔍", fontSize = 14.sp)
+                    Text(text = "🔍", fontSize = 13.sp)
                 }
 
                 Box(
@@ -688,21 +750,35 @@ fun MatchesListScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isOnlyLiveFilter) colors.accentRed else colors.cardBackground)
                         .clickable { isOnlyLiveFilter = !isOnlyLiveFilter }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "🔴", fontSize = 12.sp)
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "🔴", fontSize = 11.sp)
+                        Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = if (totalLiveCount > 0) "ÉLŐ ($totalLiveCount)" else "ÉLŐ",
                             color = if (isOnlyLiveFilter) Color.White else colors.textPrimary,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                // TÉMA VÁLTÓ GOMB (NAP / HOLD)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isTopLeaguesFilter) colors.accentPrimary else colors.cardBackground)
+                        .clickable { isTopLeaguesFilter = !isTopLeaguesFilter }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "🏆 TOP",
+                        color = if (isTopLeaguesFilter) Color.White else colors.textPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
@@ -710,23 +786,7 @@ fun MatchesListScreen(
                         .clickable { onToggleDarkMode(!isDarkMode) }
                         .padding(8.dp)
                 ) {
-                    Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 14.sp)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.cardBackground)
-                        .clickable {
-                            collapsedLeagueIds = if (collapsedLeagueIds.size == leagues.size) {
-                                emptySet()
-                            } else {
-                                leagues.mapNotNull { it.id ?: it.name }.toSet()
-                            }
-                        }
-                        .padding(8.dp)
-                ) {
-                    Text(text = if (collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 14.sp)
+                    Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 13.sp)
                 }
 
                 Box(
@@ -736,7 +796,7 @@ fun MatchesListScreen(
                         .clickable { fetchMatches(forceRefresh = true) }
                         .padding(8.dp)
                 ) {
-                    Text(text = "🔄", fontSize = 14.sp)
+                    Text(text = "🔄", fontSize = 13.sp)
                 }
 
                 Box(
@@ -746,7 +806,7 @@ fun MatchesListScreen(
                         .clickable { navController.navigate("api_settings") }
                         .padding(8.dp)
                 ) {
-                    Text(text = "⚙️", fontSize = 14.sp)
+                    Text(text = "⚙️", fontSize = 13.sp)
                 }
             }
         }
@@ -874,7 +934,14 @@ fun MatchesListScreen(
             ) {
                 if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter) {
                     item {
-                        LeagueHeader(title = "⭐ KEDVENC MECCSEK", isCollapsed = false, colors = colors, onToggle = {})
+                        LeagueHeader(
+                            title = "⭐ KEDVENC MECCSEK",
+                            isCollapsed = false,
+                            isPinned = false,
+                            colors = colors,
+                            onToggle = {},
+                            onTogglePin = {}
+                        )
                     }
                     items(favoriteMatchesList) { match ->
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
@@ -897,11 +964,13 @@ fun MatchesListScreen(
                 filteredLeagues.forEach { league ->
                     val leagueKey = league.id ?: league.name ?: ""
                     val isCollapsed = collapsedLeagueIds.contains(leagueKey)
+                    val isPinned = favoriteLeagueKeys.contains(leagueKey)
 
                     item {
                         LeagueHeader(
                             title = translateLeagueName(league.name),
                             isCollapsed = isCollapsed,
+                            isPinned = isPinned,
                             colors = colors,
                             onToggle = {
                                 collapsedLeagueIds = if (isCollapsed) {
@@ -909,6 +978,10 @@ fun MatchesListScreen(
                                 } else {
                                     collapsedLeagueIds + leagueKey
                                 }
+                            },
+                            onTogglePin = {
+                                toggleFavoriteLeague(context, leagueKey)
+                                favoriteLeagueKeys = getFavoriteLeagueIds(context)
                             }
                         )
                     }
@@ -944,7 +1017,14 @@ fun MatchesListScreen(
 }
 
 @Composable
-fun LeagueHeader(title: String, isCollapsed: Boolean, colors: AppColors, onToggle: () -> Unit) {
+fun LeagueHeader(
+    title: String,
+    isCollapsed: Boolean,
+    isPinned: Boolean,
+    colors: AppColors,
+    onToggle: () -> Unit,
+    onTogglePin: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -957,19 +1037,38 @@ fun LeagueHeader(title: String, isCollapsed: Boolean, colors: AppColors, onToggl
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = title.uppercase(),
-                color = colors.accentPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = if (isCollapsed) "▼" else "▲",
-                color = colors.textMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
+            ) {
+                Text(
+                    text = if (isPinned) "📌 " else "",
+                    fontSize = 12.sp,
+                    modifier = Modifier.clickable { onTogglePin() }
+                )
+                Text(
+                    text = title.uppercase(),
+                    color = colors.accentPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (isPinned) "⭐" else "📌",
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable { onTogglePin() }
+                        .padding(end = 8.dp)
+                )
+                Text(
+                    text = if (isCollapsed) "▼" else "▲",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
@@ -985,6 +1084,10 @@ fun MatchRow(
     val rawStatus = match.status ?: match.time ?: ""
     val live = isLiveMatch(match)
     val formattedTime = formatToLocalTime(match.date, rawStatus)
+
+    val homeG = match.home?.goals?.trim()
+    val awayG = match.away?.goals?.trim()
+    val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.background),
@@ -1059,14 +1162,14 @@ fun MatchRow(
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = match.home?.goals ?: "0",
+                    text = if (hasValidGoals) homeG!! else "-",
                     color = if (live) colors.accentPrimary else colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = match.away?.goals ?: "0",
+                    text = if (hasValidGoals) awayG!! else "-",
                     color = if (live) colors.accentPrimary else colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
@@ -1076,6 +1179,9 @@ fun MatchRow(
     }
 }
 
+// ==========================================
+// MECCS RÉSZLETEI - TABELLA ÉS ODDS FÜLEKKEL
+// ==========================================
 @Composable
 fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors: AppColors) {
     val context = LocalContext.current
@@ -1095,6 +1201,10 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors:
 
     var predictionData by remember { mutableStateOf<PredictionData?>(null) }
     var isLoadingPrediction by remember { mutableStateOf(false) }
+
+    val homeG = match.home?.goals?.trim()
+    val awayG = match.away?.goals?.trim()
+    val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
     LaunchedEffect(selectedTab, match) {
         val apiKey = getApiKey(context)
@@ -1234,7 +1344,12 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors:
                         Text(match.home?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
-                    Text("${match.home?.goals ?: "0"} - ${match.away?.goals ?: "0"}", color = colors.accentPrimary, fontSize = 28.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        text = if (hasValidGoals) "$homeG - $awayG" else "VS",
+                        color = colors.accentPrimary,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black
+                    )
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         TeamLogo(
@@ -1367,12 +1482,156 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors:
                     }
                 }
             }
-            4 -> {
-                Text("A tabella adatok betöltése folyamatban...", color = colors.textMuted, fontSize = 14.sp)
+            4 -> { // TABELLA FÜL
+                StandingsTab(match.home?.name ?: "Hazai", match.away?.name ?: "Vendég", colors)
             }
-            5 -> {
-                Text("Oddsok betöltése...", color = colors.textMuted, fontSize = 14.sp)
+            5 -> { // ODDS FÜL
+                OddsTab(match.home?.name ?: "Hazai", match.away?.name ?: "Vendég", colors)
             }
+        }
+    }
+}
+
+// ==========================================
+// TABELLA KILISTÁZÓ COMPOSABLE
+// ==========================================
+@Composable
+fun StandingsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("BAJNOKI TABELLA (PÉLDA)", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.background)
+                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("#", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
+                Text("CSAPAT", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("M", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                Text("GY", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                Text("D", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                Text("V", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                Text("P", color = colors.accentPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp))
+            }
+
+            val mockTable = listOf(
+                Triple("1", homeTeam, Triple("22", "15", "45")),
+                Triple("2", "Ferencváros", Triple("22", "14", "43")),
+                Triple("3", "Puskás Akadémia", Triple("22", "12", "38")),
+                Triple("4", awayTeam, Triple("22", "10", "32")),
+                Triple("5", "Fehérvár FC", Triple("22", "9", "29"))
+            )
+
+            mockTable.forEach { (pos, team, stats) ->
+                val isTarget = team == homeTeam || team == awayTeam
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(pos, color = if (isTarget) colors.accentPrimary else colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
+                    Text(team, color = if (isTarget) colors.accentPrimary else colors.textPrimary, fontSize = 12.sp, fontWeight = if (isTarget) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
+                    Text(stats.first, color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
+                    Text(stats.second, color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
+                    Text("3", color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
+                    Text("4", color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
+                    Text(stats.third, color = colors.accentPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp))
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// ODDS KILISTÁZÓ COMPOSABLE
+// ==========================================
+@Composable
+fun OddsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("MÉRKŐZÉS GYŐZTES (1X2)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OddsBox("1 ($homeTeam)", "2.10", colors, modifier = Modifier.weight(1f))
+                    OddsBox("X (Döntetlen)", "3.40", colors, modifier = Modifier.weight(1f))
+                    OddsBox("2 ($awayTeam)", "3.20", colors, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("GÓLOK SZÁMA (OVER / UNDER 2.5)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OddsBox("Több mint 2.5 gól", "1.85", colors, modifier = Modifier.weight(1f))
+                    OddsBox("Kevesebb mint 2.5", "1.95", colors, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("MINDKÉT CSAPAT SZEREZ GÓLT (BTS)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OddsBox("IGEN", "1.70", colors, modifier = Modifier.weight(1f))
+                    OddsBox("NEM", "2.05", colors, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OddsBox(title: String, odds: String, colors: AppColors, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.background)
+            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            .padding(10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, color = colors.textMuted, fontSize = 10.sp, maxLines = 1)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(odds, color = colors.accentPrimary, fontWeight = FontWeight.Black, fontSize = 15.sp)
         }
     }
 }
