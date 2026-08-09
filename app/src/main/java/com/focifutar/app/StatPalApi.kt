@@ -7,10 +7,11 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface StatPalService {
-    @GET("api/v2/soccer/recent-upcoming")
-    suspend fun getRecentUpcomingMatches(
+    // A HIVEKES VÉGPONT A DOKUMENTÁCIÓ ALAPJÁN
+    @GET("api/v2/soccer/matches/daily")
+    suspend fun getDailyMatches(
         @Query("access_key") apiKey: String,
-        @Query("date") date: String? = null
+        @Query("offset") offset: Int
     ): StatPalLiveMatchesResponse
 
     @GET("api/v2/soccer/h2h")
