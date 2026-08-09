@@ -23,11 +23,10 @@ class FootballWidgetProvider : AppWidgetProvider() {
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int
         ) {
-            val views = RemoteViews(context.packageName, R.layout.widget_football)
+            val views = RemoteViews(context.packageName, com.focifutar.app.R.layout.widget_football)
             
-            // Alapértelmezett szöveg beállítása a widgetre
-            views.setTextViewText(R.id.widget_title, "FOOTBALL FUTÁR")
-            views.setTextViewText(R.id.widget_match_text, "Kattints az app megnyitásához")
+            views.setTextViewText(com.focifutar.app.R.id.widget_title, "FOOTBALL FUTÁR")
+            views.setTextViewText(com.focifutar.app.R.id.widget_match_text, "Kattints az app megnyitásához")
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
