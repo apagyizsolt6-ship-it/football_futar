@@ -257,7 +257,6 @@ fun FormIndicator(formStr: String, colors: AppColors) {
     }
 }
 
-// KISZÁMÍTJA A NAPOKBAN MÉRT ELTOLÓDÁST (-7 ÉS +7 KÖZÖTT)
 fun calculateDayOffset(targetCal: Calendar): Int {
     val today = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 0)
@@ -356,7 +355,7 @@ fun translateLeagueName(leagueName: String?): String {
         "BOSNIA AND HERZEGOVINA" to "🇧🇦 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
         "BURUNDI" to "🇧🇮 BURUNDI", "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA",
         "COLOMBIA" to "🇨🇴 KOLUMBIA", "COSTA RICA" to "🇨🇷 COSTA RICA", "CROATIA" to "🇭🇷 HORVÁTORSZÁG",
-        "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨ZE CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
+        "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨🇿 CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
         "ECUADOR" to "🇪🇨 ECUADOR", "EGYPT" to "🇪🇬 EGYIPTOM", "EL SALVADOR" to "🇸🇻 EL SALVADOR",
         "ENGLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 ANGLIA", "ESTONIA" to "🇪🇪 ÉSZTORSZÁG", "EUROPE" to "🇪🇺 EURÓPA",
         "FAROE ISLANDS" to "🇫🇴 FERÖER", "FIJI" to "🇫🇯 FIJI", "FINLAND" to "🇫🇮 FINNORSZÁG",
@@ -367,7 +366,7 @@ fun translateLeagueName(leagueName: String?): String {
         "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN", "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN",
         "LATVIA" to "🇱🇻 LETTORSZÁG", "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG",
         "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
-        "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲KZ ÉSZAK-MAKEDÓNIA",
+        "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲🇰 ÉSZAK-MAKEDÓNIA",
         "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY", "PERU" to "🇵🇪 PERU",
         "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA", "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA",
         "RUSSIA" to "🇷🇺 OROSZORSZÁG", "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA",
@@ -383,24 +382,6 @@ fun translateLeagueName(leagueName: String?): String {
             countryPart = hu
             break
         }
-    }
-
-    val termMap = mapOf(
-        "PROMOTION GROUP" to "RÁJÁTSZÁS", "RELEGATION GROUP" to "ALSÓHÁZ",
-        "PLAY OFFS" to "RÁJÁTSZÁS", "PLAY-OFFS" to "RÁJÁTSZÁS",
-        "PLACEMENT MATCHES" to "HELYOSZTÓK", "WINNERS STAGE" to "GYŐZTESEK SZAKASZA",
-        "NATIONAL LEAGUE SOUTH" to "NATIONALLIGA DÉL", "NATIONAL LEAGUE NORTH" to "NATIONALLIGA ÉSZAK",
-        "CHAMPIONS LEAGUE" to "BAJNOKOK LIGÁJA", "EUROPA LEAGUE" to "EURÓPA-LIGA",
-        "CONFERENCE LEAGUE" to "KONFERENCIA LIGA", "FRIENDLIES" to "BARÁTSÁGOS",
-        "GROUP A" to "A CSOPORT", "GROUP B" to "B CSOPORT", "GROUP C" to "C CSOPORT",
-        "GROUP D" to "D CSOPORT", "GROUP E" to "E CSOPORT", "GROUP F" to "F CSOPORT",
-        "GROUP 1" to "1. CSOPORT", "GROUP 2" to "2. CSOPORT", "GROUP 3" to "3. CSOPORT",
-        "GROUP 4" to "4. CSOPORT", "GROUP 5" to "5. CSOPORT", "GROUP 6" to "6. CSOPORT",
-        "1ST DIVISION" to "1. OSZTÁLY", "2ND DIVISION" to "2. OSZTÁLY", "3RD DIVISION" to "3. OSZTÁLY"
-    )
-
-    for ((en, hu) in termMap) {
-        leaguePart = leaguePart.replace(Regex("(?i)" + Regex.escape(en)), hu)
     }
 
     return if (leaguePart.isNotBlank()) "$countryPart: $leaguePart" else countryPart
@@ -441,9 +422,6 @@ fun translateInjuryStatus(status: String?): String {
         "knee injury" to "Térdsérülés",
         "ankle injury" to "Bokasérülés",
         "shoulder injury" to "Vállsérülés",
-        "heel injury" to "Sarksérülés",
-        "yellow cards" to "Sárga lapos eltiltás",
-        "inactive" to "Inaktív",
         "injury" to "Sérülés",
         "doubtful" to "Kérdéses",
         "out" to "Kimarad"
@@ -463,91 +441,13 @@ fun translateChoice(choice: String?): String {
         c.equals("Home win", ignoreCase = true) || c.equals("Home to win", ignoreCase = true) -> "Hazai győzelem"
         c.equals("Away win", ignoreCase = true) || c.equals("Away to win", ignoreCase = true) -> "Vendég győzelem"
         c.equals("Draw", ignoreCase = true) -> "Döntetlen"
-        c.lowercase().endsWith(" to win") -> "${c.substring(0, c.length - 7)} győzelme"
         else -> c
     }
 }
 
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
-    var result: String = text.trim()
-
-    val regexRules = listOf(
-        Regex("(?i)([A-Za-z0-9\\s]+) has the home advantage and a stronger recent form in the ([A-Za-z0-9\\s]+) compared to ([A-Za-z0-9\\s]+)") to "A(z) $1 csapata élvezi a hazai pálya előnyét és jobb formában van a(z) $2 bajnokságban a(z) $3 csapatához képest",
-        Regex("(?i)who have drawn their last two league matches") to "akik döntetlent játszottak a legutóbbi két bajnoki mérkőzésükön",
-        Regex("(?i)showed offensive strength recently, scoring multiple goals at home") to "támadásban meggyőző teljesítményt nyújtott mostanában, több gólt szerezve hazai pályán",
-        Regex("(?i)while ([A-Za-z0-9\\s]+) are missing a key defender due to suspension") to "míg a(z) $1 csapatából eltiltás miatt hiányzik egy kulcsfontossági védő",
-        Regex("(?i)Despite some fatigue and squad rotation concerns for ([A-Za-z0-9\\s]+) after recent European fixtures") to "Noha a legutóbbi európai kupamérkőzések után némi fáradtság és rotáció várható a(z) $1 csapatánál",
-        Regex("(?i)their home form and historical head-to-head edge support a home victory") to "a hazai formájuk és a korábbi egymás elleni mérlegük is hazai győzelmet valószínűsít",
-        Regex("(?i)([A-Za-z0-9\\s]+) is unbeaten so far this season") to "A(z) $1 ebben a szezonban még veretlen",
-        Regex("(?i)playing confidently in their new ([A-Za-z0-9\\s]+)") to "magabiztosan játszik az új $1 stadionban",
-        Regex("(?i)with strong recent form including a (\\d+-\\d+) win in their last home match") to "meggyőző formában van, beleértve a legutóbbi hazai $1-es győzelmét",
-        Regex("(?i)and a (\\d+-\\d+) away win against ([A-Za-z0-9\\s]+) recently") to "és a legutóbbi $1-es vendéggyőzelmét a(z) $2 ellen",
-        Regex("(?i)Tactical insights suggest ([A-Za-z0-9\\s']+)'s solid defense and home advantage will be key against ([A-Za-z0-9\\s']+)'s possession-based but less effective away performances") to "A taktikai elemzés szerint a hazaiak stabil védelme és a pályaelőny kulcsfontos lesz a vendégek labdabirtoklásra épülő, de idegenben kevésbé hatékony játéka ellen",
-        Regex("(?i)([A-Za-z0-9\\s]+) has a strong historical head-to-head advantage over ([A-Za-z0-9\\s]+)") to "A(z) $1 jelentős egymás elleni előnnyel rendelkezik a(z) $2 ellen",
-        Regex("(?i)Given these factors, a draw is the most likely outcome") to "Ezek alapján a döntetlen a legvalószínűbb kimenetel",
-        Regex("(?i)([A-Za-z0-9\\s]+) is playing at home with a fully fit squad") to "A(z) $1 hazai pályán játszik teljes kerettel",
-        Regex("(?i)Market odds also support a ([A-Za-z0-9\\s]+) win") to "A fogadási oddsok is a(z) $1 győzelmét támogatják"
-    )
-
-    for ((regex, replacement) in regexRules) {
-        result = result.replace(regex, replacement)
-    }
-
-    val dictionary = mapOf(
-        "has the home advantage and a stronger recent form" to "hazai pályán játszik és jobb formát mutat",
-        "in the top Hungarian league compared to" to "a magyar élvonalban a következőkkel szemben:",
-        "who have drawn their last two league matches" to "akik az utolsó két meccsükön döntetlent játszottak",
-        "showed offensive strength mostanában" to "jó támadójátékot mutatott mostanában",
-        "scoring multiple goals at home" to "több gólt szerezve hazai pályán",
-        "missing a key defender due to suspension" to "eltiltás miatt hiányzik egy kulcsvédője",
-        "Despite some fatigue and squad rotation concerns for" to "Némi fáradtság és rotáció ellenére a következőknek:",
-        "after recent European fixtures" to "a legutóbbi európai meccsek után",
-        "their home form and historical head-to-head edge support a home victory" to "hazai formájuk és az egymás elleni mérlegük is hazai győzelmet sejtet.",
-        "unbeaten so far this season" to "ebben a szezonban még veretlen",
-        "playing confidently in their new" to "magabiztosan játszik az új",
-        "with strong recent form" to "jó formában van",
-        "in their last home match" to "a legutóbbi hazai meccsükön",
-        "away win against" to "vendéggyőzelem a következők ellen:",
-        "away win" to "vendéggyőzelem",
-        "home win" to "hazai győzelem",
-        "injury doubts" to "sérülési kétségek",
-        "key attackers sidelined" to "kulcstámadók hiányoznak",
-        "struggled away" to "szenvednek idegenben",
-        "this season" to "ebben a szezonban",
-        "head-to-head record" to "egymás elleni mérleg",
-        "head-to-head edge" to "egymás elleni előny",
-        "slightly at home" to "kissé hazai pályán",
-        "market odds" to "fogadási oddsok",
-        "strongly support" to "határozottan támogatják",
-        "tactical insights suggest" to "a taktikai elemzés szerint",
-        "solid defense" to "stabil védelem",
-        "home advantage" to "hazai pálya előnye",
-        "possession-based" to "labdabirtoklásra épülő",
-        "less effective" to "kevésbé hatékony",
-        "away performances" to "idegenbeli teljesítmény",
-        "squad rotation concerns" to "keret-rotációs aggályok",
-        "European fixtures" to "európai kupameccsek",
-        "home victory" to "hazai győzelem",
-        "away victory" to "vendéggyőzelem",
-        "recently" to "mostanában",
-        "against" to "ellen",
-        "favors" to "favorizálja",
-        "has the" to "rendelkezik a",
-        "and a" to "és egy",
-        "due to" to "miatt",
-        "while" to "míg",
-        "who have" to "akik",
-        "win" to "győzelem",
-        "draw" to "döntetlen"
-    )
-
-    val sortedDict = dictionary.entries.sortedByDescending { it.key.length }
-    for ((en, hu) in sortedDict) {
-        result = result.replace(Regex("(?i)" + Regex.escape(en)), hu)
-    }
-
-    return result
+    return text
 }
 
 fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
@@ -652,7 +552,6 @@ fun MatchesListScreen(
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
@@ -680,11 +579,8 @@ fun MatchesListScreen(
         errorMessage = null
         coroutineScope.launch {
             try {
-                // A PONTOS CÍMMEL ÉS A MEGFELELŐ OFFSET PARAMÉTERREL HÍVJUK MEG
                 val response = StatPalClient.service.getDailyMatches(apiKey, offset)
-
-                val rawLeagues = response.liveMatches?.league.orEmpty()
-
+                val rawLeagues = response.liveMatches?.league ?: response.response?.league.orEmpty()
                 val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                 val newScoresMap = mutableMapOf<String, String>()
@@ -696,11 +592,7 @@ fun MatchesListScreen(
                     if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
                         val oldScore = previousScoresMap[id]
                         if (oldScore != null && oldScore != scoreStr) {
-                            Toast.makeText(
-                                context,
-                                "⚽ GÓL! ${m.home?.name} $scoreStr ${m.away?.name}",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            Toast.makeText(context, "⚽ GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
@@ -713,9 +605,8 @@ fun MatchesListScreen(
                     errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
                 }
             } catch (e: Exception) {
-                val keyMasked = if (apiKey.length > 6) "${apiKey.take(4)}...${apiKey.takeLast(4)} (${apiKey.length} kar.)" else "Hibás/Hiányzó kulcs"
                 val errDetails = if (e is HttpException) "HTTP ${e.code()} (${e.message()})" else e.localizedMessage ?: "Ismeretlen hiba"
-                errorMessage = "API Hiba (matches/daily végpont):\n\nBeállított kulcs: $keyMasked\nHiba: $errDetails\nOffset: $offset\n\nKérlek ellenőrizd a kulcsodat a StatPal.io fiókodban vagy illeszd be újra a ⚙️ Beállításokban!"
+                errorMessage = "API Hiba: $errDetails\nOffset: $offset"
             } finally {
                 isLoading = false
             }
@@ -724,7 +615,7 @@ fun MatchesListScreen(
 
     LaunchedEffect(selectedCalendar) {
         isLoading = true
-        delay(400L)
+        delay(300L)
         fetchMatches()
     }
 
@@ -1283,12 +1174,7 @@ fun MatchRow(
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TeamLogo(
-                        team = match.home,
-                        colors = colors,
-                        modifier = Modifier.size(20.dp),
-                        fontSize = 10.sp
-                    )
+                    TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = match.home?.name ?: "-",
@@ -1301,12 +1187,7 @@ fun MatchRow(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TeamLogo(
-                        team = match.away,
-                        colors = colors,
-                        modifier = Modifier.size(20.dp),
-                        fontSize = 10.sp
-                    )
+                    TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = match.away?.name ?: "-",
@@ -1337,7 +1218,7 @@ fun MatchRow(
 }
 
 // ==========================================
-// MECCS RÉSZLETEI
+// MECCS RÉSZLETEI ÉS TAB-OK
 // ==========================================
 @Composable
 fun MatchDetailScreen(
@@ -1639,12 +1520,8 @@ fun MatchDetailScreen(
                     Text("Még nem állnak rendelkezésre a kezdőcsapatok.", color = colors.textMuted, fontSize = 14.sp)
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        item {
-                            LineupSection(lineupData?.home, colors)
-                        }
-                        item {
-                            LineupSection(lineupData?.away, colors)
-                        }
+                        item { LineupSection(lineupData?.home, colors) }
+                        item { LineupSection(lineupData?.away, colors) }
                     }
                 }
             }
