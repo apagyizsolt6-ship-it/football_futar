@@ -272,7 +272,7 @@ fun calculateDayOffset(targetCal: Calendar): Int {
     }
     val diffMillis = target.timeInMillis - today.timeInMillis
     val diffDays = TimeUnit.MILLISECONDS.toDays(diffMillis).toInt()
-    return diffDays.coerceIn(-7, 7)
+    return diffDays
 }
 
 fun formatDateForDisplay(cal: Calendar): String {
@@ -580,7 +580,7 @@ fun MatchesListScreen(
         coroutineScope.launch {
             try {
                 val response = StatPalClient.service.getDailyMatches(apiKey, offset)
-                val rawLeagues = response.liveMatches?.league ?: response.response?.league.orEmpty()
+                val rawLeagues = response.liveMatches?.league.orEmpty()
                 val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                 val newScoresMap = mutableMapOf<String, String>()
