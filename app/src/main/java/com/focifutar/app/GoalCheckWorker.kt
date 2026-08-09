@@ -39,6 +39,7 @@ class GoalCheckWorker(
 
                     val savedScoreStr = prefs.getString("${matchId}_score", null)
                     val wasFinished = prefs.getBoolean("${matchId}_finished", false)
+                    val wasHt = prefs.getBoolean("${matchId}_ht", false)
 
                     // 1. Gól ellenőrzés
                     if (isLiveMatch(match)) {
@@ -48,13 +49,40 @@ class GoalCheckWorker(
                         }
                     }
 
-                    // 2. Meccs vége ellenőrzés
+                    // 2. Félidő ellenőrzés
+                    val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
+                    if (isHtNow && !wasHt) {
+                        val htText = "⏱️ Félidő van a mérkőzésen: ${match.home?.name} $currentScoreStr ${match.away?.name}"
+                        sendNotification(context, "⏱️ Félidő", htText)
+                        prefs.edit().putBoolean("${matchId}_ht", true).apply()
+                    }
+
+                    // 3. Meccs vége ellenőrzés
                     val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
                     if (isFinishedNow && !wasFinished) {
                         val endText = "🏁 VÉGE A MECCSNEK! ${match.home?.name} $currentScoreStr ${match.away?.name}"
                         sendNotification(context, "🏁 Mérkőzés Vége", endText)
                         prefs.edit().putBoolean("${matchId}_finished", true).apply()
                     }
+
+                    // 4. Lapok (Sárga / Piros) ellenőrzése
+                    val events = match.events?.event.orEmpty()
+                    val processedEvents = prefs.getStringSet("${matchId}_processed_events", emptySet())?.toMutableSet() ?: mutableSetOf()
+                    
+                    events.forEach { event ->
+                        val type = event.type?.lowercase() ?: ""
+                        if (type.contains("yellow") || type.contains("red")) {
+                            val eventKey = "${event.minute}_${event.player}_${event.type}"
+                            if (!processedEvents.contains(eventKey)) {
+                                processedEvents.add(eventKey)
+                                val cardIcon = if (type.contains("red")) "🟥" else "🟨"
+                                val cardName = if (type.contains("red")) "Piros lap" else "Sárga lap"
+                                val cardText = "$cardIcon $cardName (${event.minute}'): ${event.player} (${match.home?.name} - ${match.away?.name})"
+                                sendNotification(context, "⚠️ Lap esemény", cardText)
+                            }
+                        }
+                    }
+                    prefs.edit().putStringSet("${matchId}_processed_events", processedEvents).apply()
 
                     prefs.edit().putString("${matchId}_score", currentScoreStr).apply()
                 }
