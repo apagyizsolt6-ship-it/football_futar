@@ -18,7 +18,7 @@ class GoalCheckWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val context = applicationContext
         val apiKey = getApiKey(context)
-        if (apiKey.isBlank()) return@WithContext Result.success()
+        if (apiKey.isBlank()) return@withContext Result.success()
 
         val favoriteIds = getFavoriteMatchIds(context)
         if (favoriteIds.isEmpty()) return@withContext Result.success()
