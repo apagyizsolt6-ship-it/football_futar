@@ -34,6 +34,9 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -476,6 +479,15 @@ var selectedLeagueIdGlobal: String? = null
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        val workRequest = PeriodicWorkRequestBuilder<GoalCheckWorker>(15, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "GoalCheckWork",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
+        
         setContent {
             val context = LocalContext.current
             var isDarkMode by remember { mutableStateOf(isDarkModeSaved(context)) }
@@ -1217,9 +1229,6 @@ fun MatchRow(
     }
 }
 
-// ==========================================
-// MECCS RÉSZLETEI ÉS TAB-OK
-// ==========================================
 @Composable
 fun MatchDetailScreen(
     match: StatPalMatch,
