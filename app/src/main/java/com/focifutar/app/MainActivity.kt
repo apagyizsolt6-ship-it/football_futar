@@ -57,7 +57,7 @@ data class AppColors(
 val DarkColors = AppColors(
     background = Color(0xFF101214),
     cardBackground = Color(0xFF1A1D21),
-    accentPrimary = Color(0xFF00FF66), // Neon Zöld
+    accentPrimary = Color(0xFF00FF66),
     accentRed = Color(0xFFFF3366),
     accentYellow = Color(0xFFFFCC00),
     textPrimary = Color(0xFFFFFFFF),
@@ -66,12 +66,12 @@ val DarkColors = AppColors(
 )
 
 val LightColors = AppColors(
-    background = Color(0xFFF1F5F9), // Letisztult világosszürke
-    cardBackground = Color(0xFFFFFFFF), // Tiszta fehér
-    accentPrimary = Color(0xFF0284C7), // Királykék / Sportkék
+    background = Color(0xFFF1F5F9),
+    cardBackground = Color(0xFFFFFFFF),
+    accentPrimary = Color(0xFF0284C7),
     accentRed = Color(0xFFE11D48),
     accentYellow = Color(0xFFD97706),
-    textPrimary = Color(0xFF0F172A), // Sötét pala fekete
+    textPrimary = Color(0xFF0F172A),
     textMuted = Color(0xFF64748B),
     border = Color(0xFFE2E8F0)
 )
@@ -217,6 +217,8 @@ fun TeamLogo(
 
 @Composable
 fun FormIndicator(formStr: String, colors: AppColors) {
+    if (formStr.isBlank()) return
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -637,7 +639,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // FOGADÁSI SZELVÉNY ALSÓ SÁV
                     if (betSlipItems.isNotEmpty()) {
                         Box(
                             modifier = Modifier
@@ -726,7 +727,6 @@ fun MatchesListScreen(
                     if (matchesOnDate.isNotEmpty()) league else null
                 }
 
-                // GÓL ÉRTESÍTÉSEK ELLENŐRZÉSE
                 val newScoresMap = mutableMapOf<String, String>()
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
@@ -815,7 +815,6 @@ fun MatchesListScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        // FELSŐ SÁV
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -875,13 +874,12 @@ fun MatchesListScreen(
                     )
                 }
 
-                // VISSZATETT KINYIT / ÖSSZECSUK IKON (📂 / 📁)
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(colors.cardBackground)
                         .clickable {
-                            collapsedLeagueIds = if (collapsedLeagueIds.size == leagues.size && leagues.isNotEmpty()) {
+                            collapsedLeagueIds = if (collapsedLeagueIds.isNotEmpty() && collapsedLeagueIds.size == leagues.size) {
                                 emptySet()
                             } else {
                                 leagues.mapNotNull { it.id ?: it.name }.toSet()
@@ -944,7 +942,6 @@ fun MatchesListScreen(
             )
         }
 
-        // VÍZSZINTES DÁTUMVÁLASZTÓ CSÍK (DATE STRIP)
         DateStrip(
             selectedCalendar = selectedCalendar,
             onDateSelected = { selectedCalendar = it },
@@ -974,7 +971,6 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                // A NAP RANGADÓJA BANNER
                 if (featuredMatch != null && searchQuery.isBlank() && !isOnlyLiveFilter) {
                     item {
                         FeaturedMatchBanner(featuredMatch, colors) {
@@ -1068,9 +1064,6 @@ fun MatchesListScreen(
     }
 }
 
-// ==========================================
-// VÍZSZINTES DÁTUMVÁLASZTÓ COMPOSABLE
-// ==========================================
 @Composable
 fun DateStrip(
     selectedCalendar: Calendar,
@@ -1149,9 +1142,6 @@ fun DateStrip(
     }
 }
 
-// ==========================================
-// A NAP RANGADÓJA BANNER
-// ==========================================
 @Composable
 fun FeaturedMatchBanner(
     match: StatPalMatch,
@@ -1400,6 +1390,9 @@ fun MatchDetailScreen(
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
 
+    var homeFormStr by remember { mutableStateOf("") }
+    var awayFormStr by remember { mutableStateOf("") }
+
     var injuryMatchData by remember { mutableStateOf<InjuryMatch?>(null) }
     var isLoadingInjuries by remember { mutableStateOf(false) }
 
@@ -1413,34 +1406,41 @@ fun MatchDetailScreen(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
-    LaunchedEffect(selectedTab, match) {
+    LaunchedEffect(match) {
         val apiKey = getApiKey(context)
         val homeId = match.home?.id ?: ""
         val awayId = match.away?.id ?: ""
+
+        if (apiKey.isNotBlank() && homeId.isNotBlank() && awayId.isNotBlank()) {
+            coroutineScope.launch {
+                try {
+                    val response = StatPalClient.service.getHeadToHead(apiKey, homeId, awayId)
+                    val list = response.headToHead?.recentMeetings?.match ?: emptyList()
+                    h2hMatches = list
+
+                    var hForm = ""
+                    var aForm = ""
+                    list.take(5).forEach { m ->
+                        val hScore = m.team1Score?.toIntOrNull() ?: 0
+                        val aScore = m.team2Score?.toIntOrNull() ?: 0
+                        if (hScore > aScore) { hForm += "W"; aForm += "L" }
+                        else if (hScore < aScore) { hForm += "L"; aForm += "W" }
+                        else { hForm += "D"; aForm += "D" }
+                    }
+                    homeFormStr = hForm
+                    awayFormStr = aForm
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    LaunchedEffect(selectedTab, match) {
+        val apiKey = getApiKey(context)
         val matchId = match.mainId ?: ""
 
         if (apiKey.isBlank()) return@LaunchedEffect
 
         when (selectedTab) {
-            0 -> {
-                val cacheKey = "h2h_${homeId}_${awayId}"
-                val cached: List<H2HMatch>? = ApiCacheManager.get(cacheKey)
-                if (cached != null) {
-                    h2hMatches = cached
-                } else if (homeId.isNotBlank() && awayId.isNotBlank() && h2hMatches.isEmpty()) {
-                    isLoadingH2H = true
-                    coroutineScope.launch {
-                        try {
-                            val response = StatPalClient.service.getHeadToHead(apiKey, homeId, awayId)
-                            val list = response.headToHead?.recentMeetings?.match ?: emptyList()
-                            h2hMatches = list
-                            ApiCacheManager.put(cacheKey, list)
-                        } catch (_: Exception) {} finally {
-                            isLoadingH2H = false
-                        }
-                    }
-                }
-            }
             1 -> {
                 val cacheKey = "injuries_${matchId}"
                 val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
@@ -1544,8 +1544,10 @@ fun MatchDetailScreen(
                         TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(40.dp), fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(match.home?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        FormIndicator("WWDLW", colors)
+                        if (homeFormStr.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FormIndicator(homeFormStr, colors)
+                        }
                     }
 
                     Text(
@@ -1559,8 +1561,10 @@ fun MatchDetailScreen(
                         TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(40.dp), fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(match.away?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        FormIndicator("DLWWL", colors)
+                        if (awayFormStr.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FormIndicator(awayFormStr, colors)
+                        }
                     }
                 }
             }
@@ -1684,169 +1688,59 @@ fun MatchDetailScreen(
                 }
             }
             4 -> {
-                StandingsTab(match.home?.name ?: "Hazai", match.away?.name ?: "Vendég", colors)
+                StandingsTab(colors)
             }
             5 -> {
-                OddsTab(match, betSlipItems, colors, onToggleOdds)
+                OddsTab(colors)
             }
         }
     }
 }
 
-// ==========================================
-// TABELLA KILISTÁZÓ COMPOSABLE
-// ==========================================
 @Composable
-fun StandingsTab(homeTeam: String, awayTeam: String, colors: AppColors) {
+fun StandingsTab(colors: AppColors) {
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, colors.border, RoundedCornerShape(12.dp))
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text("BAJNOKI TABELLA", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.background)
-                    .padding(vertical = 6.dp, horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("#", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
-                Text("CSAPAT", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("M", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-                Text("GY", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-                Text("D", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-                Text("V", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-                Text("P", color = colors.accentPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp))
-            }
-
-            val mockTable = listOf(
-                Triple("1", homeTeam, Triple("22", "15", "45")),
-                Triple("2", "Ferencváros", Triple("22", "14", "43")),
-                Triple("3", "Puskás Akadémia", Triple("22", "12", "38")),
-                Triple("4", awayTeam, Triple("22", "10", "32")),
-                Triple("5", "Fehérvár FC", Triple("22", "9", "29"))
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("📊 BAJNOKI TABELLA", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "A bajnoki tabella élő adatai ehhez a ligához jelenleg nem állnak rendelkezésre az API adathírfolyamban.",
+                color = colors.textMuted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
             )
-
-            mockTable.forEach { (pos, team, stats) ->
-                val isTarget = team == homeTeam || team == awayTeam
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(pos, color = if (isTarget) colors.accentPrimary else colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
-                    Text(team, color = if (isTarget) colors.accentPrimary else colors.textPrimary, fontSize = 12.sp, fontWeight = if (isTarget) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                    Text(stats.first, color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
-                    Text(stats.second, color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
-                    Text("3", color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
-                    Text("4", color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp))
-                    Text(stats.third, color = colors.accentPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp))
-                }
-            }
-        }
-    }
-}
-
-// ==========================================
-// ODDS ÉS FOGADÁSI SZELVÉNY COMPOSABLE
-// ==========================================
-@Composable
-fun OddsTab(
-    match: StatPalMatch,
-    betSlipItems: List<BetSlipItem>,
-    colors: AppColors,
-    onToggleOdds: (BetSlipItem) -> Unit
-) {
-    val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
-    val matchTitle = "${match.home?.name} vs ${match.away?.name}"
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("MÉRKŐZÉS GYŐZTES (1X2)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val is1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai (1)" }
-                    val isX = betSlipItems.any { it.matchId == matchId && it.choiceName == "Döntetlen (X)" }
-                    val is2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég (2)" }
-
-                    OddsBox("1 (Hazai)", "2.10", isSelected = is1, colors = colors, modifier = Modifier.weight(1f)) {
-                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai (1)", 2.10))
-                    }
-                    OddsBox("X (Döntetlen)", "3.40", isSelected = isX, colors = colors, modifier = Modifier.weight(1f)) {
-                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Döntetlen (X)", 3.40))
-                    }
-                    OddsBox("2 (Vendég)", "3.20", isSelected = is2, colors = colors, modifier = Modifier.weight(1f)) {
-                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég (2)", 3.20))
-                    }
-                }
-            }
-        }
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("GÓLOK SZÁMA (OVER / UNDER 2.5)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isOver = betSlipItems.any { it.matchId == matchId && it.choiceName == "Több mint 2.5 gól" }
-                    val isUnder = betSlipItems.any { it.matchId == matchId && it.choiceName == "Kevesebb mint 2.5" }
-
-                    OddsBox("Több mint 2.5 gól", "1.85", isSelected = isOver, colors = colors, modifier = Modifier.weight(1f)) {
-                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Több mint 2.5 gól", 1.85))
-                    }
-                    OddsBox("Kevesebb mint 2.5", "1.95", isSelected = isUnder, colors = colors, modifier = Modifier.weight(1f)) {
-                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Kevesebb mint 2.5", 1.95))
-                    }
-                }
-            }
         }
     }
 }
 
 @Composable
-fun OddsBox(
-    title: String,
-    odds: String,
-    isSelected: Boolean,
-    colors: AppColors,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) colors.accentPrimary else colors.background)
-            .border(1.dp, if (isSelected) colors.accentPrimary else colors.border, RoundedCornerShape(8.dp))
-            .clickable { onClick() }
-            .padding(10.dp),
-        contentAlignment = Alignment.Center
+fun OddsTab(colors: AppColors) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, color = if (isSelected) Color.White else colors.textMuted, fontSize = 10.sp, maxLines = 1)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(odds, color = if (isSelected) Color.White else colors.accentPrimary, fontWeight = FontWeight.Black, fontSize = 15.sp)
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("🎲 ÉLŐ ODSOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Ehhez a mérkőzéshez a StatPal Starter API csomagban jelenleg nem érhetők el élő fogadási szorzók.",
+                color = colors.textMuted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
