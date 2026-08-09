@@ -226,15 +226,31 @@ fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
 }
 
 // ==========================================
-// ÉLŐ MECCS FELISMERŐ
+// ÉLŐ MECCS FELISMERŐ (PONTOSÍTOTT)
 // ==========================================
 fun isLiveMatch(match: StatPalMatch): Boolean {
     val rawStatus = (match.status ?: match.time ?: "").trim().uppercase()
     if (rawStatus.isBlank()) return false
-    if (rawStatus == "FT" || rawStatus == "VÉGE") return false
-    if (rawStatus == "POSTPONED" || rawStatus == "ELHALASZTVA") return false
-    if (rawStatus == "CANCELLED" || rawStatus == "ELMARADT") return false
-    if (rawStatus.contains(":") && !rawStatus.contains("'")) return false
+
+    // Bármilyen elhalasztott, elmaradt, félbeszakadt meccs kizárása
+    if (rawStatus.contains("POSTP") || rawStatus.contains("PPD") || 
+        rawStatus.contains("CANC") || rawStatus.contains("ABAND") || 
+        rawStatus.contains("SUSP") || rawStatus.contains("INTERR") ||
+        rawStatus.contains("ELHAL") || rawStatus.contains("ELMARADT")) {
+        return false
+    }
+
+    // Bármilyen lezárult meccs kizárása
+    if (rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || 
+        rawStatus == "AET" || rawStatus == "AP" || rawStatus == "ENDED") {
+        return false
+    }
+
+    // Kezdési időpontok (pl. "15:45", "05:00", "23:00") kizárása - kivéve ha percre utaló jellel rendelkezik mint "45'"
+    if (rawStatus.contains(":") && !rawStatus.contains("'")) {
+        return false
+    }
+
     return true
 }
 
@@ -332,11 +348,16 @@ fun translateLeagueName(leagueName: String?): String {
 
 fun translateStatus(status: String?): String {
     if (status.isNullOrBlank()) return ""
-    return when (status.uppercase().trim()) {
-        "FT" -> "VÉGE"
-        "HT" -> "FÉLIDŐ"
-        "POSTPONED" -> "ELHALASZTVA"
-        "CANCELLED" -> "ELMARADT"
+    val s = status.uppercase().trim()
+    return when {
+        s == "FT" || s == "FINISHED" -> "VÉGE"
+        s == "AET" -> "H.U. VÉGE"
+        s == "AP" -> "BÜNT. VÉGE"
+        s == "HT" -> "FÉLIDŐ"
+        s == "PEN" || s == "PEN." -> "BÜNTETŐK"
+        s.startsWith("POSTP") || s == "PPD" -> "ELHAL."
+        s.startsWith("CANC") || s.startsWith("ABAND") -> "ELMARADT"
+        s.startsWith("SUSP") || s.startsWith("INTERR") -> "FÉLBESZ."
         else -> status
     }
 }
@@ -576,7 +597,6 @@ fun MatchesListScreen(navController: NavController) {
         }
     }
 
-    // 400ms KÉSLELTETÉS DÁTUMVÁLTÁSNÁL (DEBOUNCE)
     LaunchedEffect(selectedCalendar) {
         isLoading = true
         delay(400L)
@@ -682,7 +702,7 @@ fun MatchesListScreen(navController: NavController) {
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(CardBackground)
-                        .clickable { fetchMatches(forceRefresh = true) } // Kényszerített frissítés
+                        .clickable { fetchMatches(forceRefresh = true) }
                         .padding(8.dp)
                 ) {
                     Text(text = "🔄", fontSize = 14.sp)
@@ -1019,7 +1039,7 @@ fun MatchRow(
 }
 
 // ==========================================
-// MECCS RÉSZLETEI - LUSTA BETÖLTÉS ÉS CACHE
+// MECCS RÉSZLETEI
 // ==========================================
 @Composable
 fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
@@ -1041,7 +1061,6 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
     var predictionData by remember { mutableStateOf<PredictionData?>(null) }
     var isLoadingPrediction by remember { mutableStateOf(false) }
 
-    // LUSTA BETÖLTÉS (LAZY LOADING): CSAK AKKOR TÖLT, AMIKOR AZ ADOTT FÜLRE LÉPSZ
     LaunchedEffect(selectedTab, match) {
         val apiKey = getApiKey(context)
         val homeId = match.home?.id ?: ""
@@ -1051,7 +1070,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
         if (apiKey.isBlank()) return@LaunchedEffect
 
         when (selectedTab) {
-            0 -> { // H2H
+            0 -> {
                 val cacheKey = "h2h_${homeId}_${awayId}"
                 val cached: List<H2HMatch>? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -1070,7 +1089,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     }
                 }
             }
-            1 -> { // HIÁNYZÓK
+            1 -> {
                 val cacheKey = "injuries_${matchId}"
                 val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -1092,7 +1111,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     }
                 }
             }
-            2 -> { // KEZDŐK
+            2 -> {
                 val cacheKey = "lineup_${matchId}"
                 val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -1110,7 +1129,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     }
                 }
             }
-            3 -> { // AI TIPP
+            3 -> {
                 val cacheKey = "prediction_${matchId}"
                 val cached: PredictionData? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
