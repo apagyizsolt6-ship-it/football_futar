@@ -9,8 +9,7 @@ import retrofit2.http.Query
 interface StatPalService {
     @GET("api/v2/soccer/live")
     suspend fun getLiveMatches(
-        @Query("access_key") apiKey: String,
-        @Query("date") date: String? = null
+        @Query("access_key") apiKey: String
     ): StatPalLiveMatchesResponse
 
     @GET("api/v2/soccer/recent-upcoming")
