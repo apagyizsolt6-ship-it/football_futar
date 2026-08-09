@@ -35,7 +35,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
-import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -75,54 +74,6 @@ val LightColors = AppColors(
     textPrimary = Color(0xFF0F172A),
     textMuted = Color(0xFF64748B),
     border = Color(0xFFE2E8F0)
-)
-
-// ==========================================
-// STATPAL PRE-MATCH ODDS ADATMODELLEK
-// ==========================================
-data class StatPalPrematchOddsResponse(
-    @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer? = null
-)
-
-data class PrematchOddsContainer(
-    val updated: String? = null,
-    @SerializedName("updated_ts") val updatedTs: Long? = null,
-    val league: PrematchOddsLeague? = null
-)
-
-data class PrematchOddsLeague(
-    val id: String? = null,
-    val name: String? = null,
-    val country: String? = null,
-    val match: List<PrematchOddsMatch>? = null
-)
-
-data class PrematchOddsMatch(
-    @SerializedName("main_id") val mainId: String? = null,
-    val date: String? = null,
-    val time: String? = null,
-    val home: StatPalTeam? = null,
-    val away: StatPalTeam? = null,
-    val odds: List<PrematchOddsCategory>? = null
-)
-
-data class PrematchOddsCategory(
-    val id: String? = null,
-    val name: String? = null,
-    val stop: String? = null,
-    val bookmaker: List<PrematchBookmaker>? = null
-)
-
-data class PrematchBookmaker(
-    val id: String? = null,
-    val name: String? = null,
-    val timestamp: String? = null,
-    val odd: List<PrematchOddValue>? = null
-)
-
-data class PrematchOddValue(
-    val name: String? = null,
-    val value: String? = null
 )
 
 data class BetSlipItem(
@@ -768,7 +719,7 @@ fun MatchesListScreen(
                     }
                 }
 
-                val rawLeagues = response.liveMatches?.league ?: emptyList()
+                val rawLeagues = response.liveMatches?.league.orEmpty()
 
                 val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
                     val matchesOnDate = league.match.filter { match ->
@@ -1477,7 +1428,7 @@ fun MatchDetailScreen(
             coroutineScope.launch {
                 try {
                     val response = StatPalClient.service.getHeadToHead(apiKey, homeId, awayId)
-                    val list = response.headToHead?.recentMeetings?.match ?: emptyList()
+                    val list = response.headToHead?.recentMeetings?.match.orEmpty()
                     h2hMatches = list
 
                     var hForm = ""
@@ -1513,8 +1464,8 @@ fun MatchDetailScreen(
                     coroutineScope.launch {
                         try {
                             val response = StatPalClient.service.getInjuriesAndSuspensions(apiKey)
-                            val allMatches = response.injuriesSuspensions?.league?.flatMap { it.match ?: emptyList() }
-                            val found = allMatches?.find { it.mainId == match.mainId }
+                            val allMatches = response.injuriesSuspensions?.league.orEmpty().flatMap { it.match.orEmpty() }
+                            val found = allMatches.find { it.mainId == match.mainId }
                             if (found != null) {
                                 injuryMatchData = found
                                 ApiCacheManager.put(cacheKey, found)
@@ -1572,7 +1523,7 @@ fun MatchDetailScreen(
                     coroutineScope.launch {
                         try {
                             val response = StatPalClient.service.getPrematchOdds(lId, apiKey)
-                            val matchFound = response.prematchOdds?.league?.match?.find { 
+                            val matchFound = response.prematchOdds?.league?.match.orEmpty().find { 
                                 it.mainId == matchId || (it.home?.name == match.home?.name && it.away?.name == match.away?.name)
                             }
                             if (matchFound != null) {
@@ -1828,9 +1779,9 @@ fun OddsTab(
         return
     }
 
-    val oneXtwoCategory = prematchOddsMatch?.odds?.find { it.name.equals("1x2", ignoreCase = true) }
+    val oneXtwoCategory = prematchOddsMatch?.odds.orEmpty().find { it.name.equals("1x2", ignoreCase = true) }
     val bookmaker = oneXtwoCategory?.bookmaker?.firstOrNull()
-    val oddsList = bookmaker?.odd ?: emptyList()
+    val oddsList = bookmaker?.odd.orEmpty()
 
     val homeOddVal = oddsList.find { it.name.equals("Home", ignoreCase = true) }?.value
     val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value
@@ -1847,7 +1798,7 @@ fun OddsTab(
                 modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("🎲 ÉLŐ ODSOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("🎲 ÉLŐ ODDS-OK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "Ehhez a mérkőzéshez a StatPal API-ban nem áll rendelkezésre meccs előtti szorzó.",
@@ -2054,7 +2005,7 @@ fun LineupSection(lineup: LineupTeam?, colors: AppColors) {
         )
         Text("Edző: ${lineup?.coach?.name ?: "-"}", color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
 
-        lineup?.startingXi?.forEach { player ->
+        lineup?.startingXi.orEmpty().forEach { player ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2070,8 +2021,8 @@ fun LineupSection(lineup: LineupTeam?, colors: AppColors) {
 
 @Composable
 fun TeamInjuriesSection(teamName: String, sidelined: SidelinedData?, colors: AppColors) {
-    val toMiss = sidelined?.toMiss?.player ?: emptyList()
-    val questionable = sidelined?.questionable?.player ?: emptyList()
+    val toMiss = sidelined?.toMiss?.player.orEmpty()
+    val questionable = sidelined?.questionable?.player.orEmpty()
 
     Column {
         Text(teamName.uppercase(), color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp))
