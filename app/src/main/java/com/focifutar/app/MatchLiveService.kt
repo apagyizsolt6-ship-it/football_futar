@@ -23,6 +23,7 @@ class MatchLiveService : Service() {
 
         serviceScope.launch {
             while (true) {
+                var hasActiveLiveFavorites = false
                 try {
                     val context = applicationContext
                     val apiKey = getApiKey(context)
@@ -35,6 +36,11 @@ class MatchLiveService : Service() {
                         leagues.flatMap { it.match }.forEach { m ->
                             val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
                             if (favoriteIds.contains(id)) {
+                                // Megnézzük, hogy ez a kedvenc meccs éppen zajlik-e
+                                if (isLiveMatch(m)) {
+                                    hasActiveLiveFavorites = true
+                                }
+
                                 val scoreStr = "${m.home?.goals ?: "0"}-${m.away?.goals ?: "0"}"
                                 val rawStatus = (m.status ?: m.time ?: "").uppercase()
                                 val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
@@ -82,7 +88,14 @@ class MatchLiveService : Service() {
                     }
                 } catch (_: Exception) {}
 
-                delay(15000L) // 15 másodpercenként fut a háttérben is folyamatosan!
+                // INTELLIGENS SPÓROLÁS:
+                // Ha van élő kedvenc meccs -> 15 másodperc múlva kérdez újra.
+                // Ha NINCS élő meccs -> 5 percet (300 000 ms) vártat, spórolva az API limittel!
+                if (hasActiveLiveFavorites) {
+                    delay(15000L)
+                } else {
+                    delay(300000L)
+                }
             }
         }
 
