@@ -37,6 +37,7 @@ import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -133,12 +134,13 @@ object ApiCacheManager {
 
 fun saveApiKey(context: Context, key: String) {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    prefs.edit().putString("statpal_api_key", key.trim()).apply()
+    val cleanKey = key.trim().replace("\"", "").replace("'", "")
+    prefs.edit().putString("statpal_api_key", cleanKey).apply()
 }
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim() ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 fun getFavoriteMatchIds(context: Context): Set<String> {
@@ -709,35 +711,8 @@ fun MatchesListScreen(
         errorMessage = null
         coroutineScope.launch {
             try {
-                val response = if (isToday(selectedCalendar)) {
-                    try {
-                        StatPalClient.service.getLiveMatches(apiKey)
-                    } catch (_: Exception) {
-                        try {
-                            StatPalClient.service.getFixtures(apiKey, dateParam)
-                        } catch (_: Exception) {
-                            try {
-                                StatPalClient.service.getMatches(apiKey, dateParam)
-                            } catch (_: Exception) {
-                                StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
-                            }
-                        }
-                    }
-                } else {
-                    try {
-                        StatPalClient.service.getFixtures(apiKey, dateParam)
-                    } catch (_: Exception) {
-                        try {
-                            StatPalClient.service.getMatches(apiKey, dateParam)
-                        } catch (_: Exception) {
-                            try {
-                                StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
-                            } catch (_: Exception) {
-                                StatPalClient.service.getLiveMatches(apiKey)
-                            }
-                        }
-                    }
-                }
+                // Kizárólag a Get Matches Recent / Upcoming végpontot hívjuk meg
+                val response = StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
 
                 val rawLeagues = response.liveMatches?.league.orEmpty()
 
@@ -774,12 +749,9 @@ fun MatchesListScreen(
                     errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
                 }
             } catch (e: Exception) {
-                val errMsg = e.localizedMessage ?: ""
-                if (errMsg.contains("404")) {
-                    errorMessage = "Hiba a kapcsolódáskor: HTTP 404 Not Found.\n(Ellenőrizd a StatPal API kulcsodat a ⚙️ Beállításokban!)"
-                } else {
-                    errorMessage = "Hiba a kapcsolódáskor: $errMsg"
-                }
+                val keyMasked = if (apiKey.length > 6) "${apiKey.take(4)}...${apiKey.takeLast(4)} (${apiKey.length} kar.)" else "Hibás/Hiányzó kulcs"
+                val errDetails = if (e is HttpException) "HTTP ${e.code()} (${e.message()})" else e.localizedMessage ?: "Ismeretlen hiba"
+                errorMessage = "API Hiba (recent-upcoming végpont):\n\nBeállított kulcs: $keyMasked\nHiba: $errDetails\n\nKérlek ellenőrizd a kulcsodat a StatPal.io fiókodban vagy illeszd be újra a ⚙️ Beállításokban!"
             } finally {
                 isLoading = false
             }
@@ -2123,7 +2095,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         )
 
         Text(
-            text = "Illeszd be a StatPal Starter API kulcsodat az élő adatok lekéréséhez.",
+            text = "Illeszd be a StatPal API kulcsodat az élő adatok lekéréséhez.",
             color = colors.textMuted,
             fontSize = 14.sp,
             modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
