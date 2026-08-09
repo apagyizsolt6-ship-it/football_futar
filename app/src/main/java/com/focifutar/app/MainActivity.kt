@@ -35,6 +35,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -74,6 +75,54 @@ val LightColors = AppColors(
     textPrimary = Color(0xFF0F172A),
     textMuted = Color(0xFF64748B),
     border = Color(0xFFE2E8F0)
+)
+
+// ==========================================
+// STATPAL PRE-MATCH ODDS ADATMODELLEK
+// ==========================================
+data class StatPalPrematchOddsResponse(
+    @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer? = null
+)
+
+data class PrematchOddsContainer(
+    val updated: String? = null,
+    @SerializedName("updated_ts") val updatedTs: Long? = null,
+    val league: PrematchOddsLeague? = null
+)
+
+data class PrematchOddsLeague(
+    val id: String? = null,
+    val name: String? = null,
+    val country: String? = null,
+    val match: List<PrematchOddsMatch>? = null
+)
+
+data class PrematchOddsMatch(
+    @SerializedName("main_id") val mainId: String? = null,
+    val date: String? = null,
+    val time: String? = null,
+    val home: StatPalTeam? = null,
+    val away: StatPalTeam? = null,
+    val odds: List<PrematchOddsCategory>? = null
+)
+
+data class PrematchOddsCategory(
+    val id: String? = null,
+    val name: String? = null,
+    val stop: String? = null,
+    val bookmaker: List<PrematchBookmaker>? = null
+)
+
+data class PrematchBookmaker(
+    val id: String? = null,
+    val name: String? = null,
+    val timestamp: String? = null,
+    val odd: List<PrematchOddValue>? = null
+)
+
+data class PrematchOddValue(
+    val name: String? = null,
+    val value: String? = null
 )
 
 data class BetSlipItem(
