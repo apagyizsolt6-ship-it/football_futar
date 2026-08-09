@@ -1233,7 +1233,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -1504,12 +1504,8 @@ fun MatchDetailScreen(
                     Text("Nincs információ sérültekről vagy eltiltottakról ehhez a meccshez.", color = colors.textMuted, fontSize = 14.sp)
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        item {
-                            TeamInjuriesSection(injuryMatchData?.home?.name ?: "Hazai", injuryMatchData?.home?.sidelined, colors)
-                        }
-                        item {
-                            TeamInjuriesSection(injuryMatchData?.away?.name ?: "Vendég", injuryMatchData?.away?.sidelined, colors)
-                        }
+                        item { TeamInjuriesSection(injuryMatchData?.home?.name ?: "Hazai", injuryMatchData?.home?.sidelined, colors) }
+                        item { TeamInjuriesSection(injuryMatchData?.away?.name ?: "Vendég", injuryMatchData?.away?.sidelined, colors) }
                     }
                 }
             }
