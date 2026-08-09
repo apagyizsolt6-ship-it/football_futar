@@ -137,7 +137,7 @@ data class PredictionData(
 )
 
 // ==========================================
-// PRE-MATCH ODDS (VALÓDI MECCS ELŐTTI SZORZÓK)
+// PRE-MATCH ODDS
 // ==========================================
 data class StatPalPrematchOddsResponse(
     @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer? = null
