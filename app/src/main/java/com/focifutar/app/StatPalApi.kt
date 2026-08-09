@@ -1,5 +1,7 @@
 package com.focifutar.app
 
+import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
@@ -7,7 +9,6 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface StatPalService {
-    // A HIVEKES VÉGPONT A DOKUMENTÁCIÓ ALAPJÁN
     @GET("api/v2/soccer/matches/daily")
     suspend fun getDailyMatches(
         @Query("access_key") apiKey: String,
@@ -48,10 +49,21 @@ interface StatPalService {
 object StatPalClient {
     private const val BASE_URL = "https://statpal.io/"
 
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(
+            object : TypeToken<List<StatPalMatch>>() {}.type,
+            MatchListDeserializer()
+        )
+        .registerTypeAdapter(
+            object : TypeToken<List<StatPalLeague>>() {}.type,
+            LeagueListDeserializer()
+        )
+        .create()
+
     val service: StatPalService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(StatPalService::class.java)
     }
