@@ -1,203 +1,185 @@
 package com.focifutar.app
 
-import com.google.gson.Gson
-import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
-import com.google.gson.reflect.TypeToken
 
-data class StatPalResponse(
-    @SerializedName("live_matches") val liveMatches: StatPalLiveMatches?
+// ==========================================
+// ÉLŐ ÉS KÖZELGŐ MECCSEK
+// ==========================================
+data class StatPalLiveMatchesResponse(
+    @SerializedName("live_matches") val liveMatches: LiveMatchesContainer? = null
 )
 
-data class StatPalLiveMatches(
-    @SerializedName("league") private val leagueElement: JsonElement?
-) {
-    val league: List<StatPalLeague>
-        get() {
-            if (leagueElement == null || leagueElement.isJsonNull) return emptyList()
-            val gson = Gson()
-            return try {
-                if (leagueElement.isJsonArray) {
-                    val listType = object : TypeToken<List<StatPalLeague>>() {}.type
-                    gson.fromJson(leagueElement, listType) ?: emptyList()
-                } else if (leagueElement.isJsonObject) {
-                    val obj = leagueElement.asJsonObject
-                    if (obj.has("match") || obj.has("name") || obj.has("id")) {
-                        listOfNotNull(gson.fromJson(obj, StatPalLeague::class.java))
-                    } else {
-                        obj.entrySet().mapNotNull { entry ->
-                            try { gson.fromJson(entry.value, StatPalLeague::class.java) } catch (_: Exception) { null }
-                        }
-                    }
-                } else emptyList()
-            } catch (_: Exception) {
-                emptyList()
-            }
-        }
-}
+data class LiveMatchesContainer(
+    val league: List<StatPalLeague>? = null
+)
 
 data class StatPalLeague(
-    @SerializedName("id") val id: String?,
-    @SerializedName("name") val name: String?,
-    @SerializedName("match") private val matchElement: JsonElement?
-) {
-    val match: List<StatPalMatch>
-        get() {
-            if (matchElement == null || matchElement.isJsonNull) return emptyList()
-            val gson = Gson()
-            return try {
-                if (matchElement.isJsonArray) {
-                    val listType = object : TypeToken<List<StatPalMatch>>() {}.type
-                    gson.fromJson(matchElement, listType) ?: emptyList()
-                } else if (matchElement.isJsonObject) {
-                    val obj = matchElement.asJsonObject
-                    if (obj.has("id") || obj.has("home") || obj.has("away")) {
-                        listOfNotNull(gson.fromJson(obj, StatPalMatch::class.java))
-                    } else {
-                        obj.entrySet().mapNotNull { entry ->
-                            try { gson.fromJson(entry.value, StatPalMatch::class.java) } catch (_: Exception) { null }
-                        }
-                    }
-                } else emptyList()
-            } catch (_: Exception) {
-                emptyList()
-            }
-        }
-}
+    val id: String? = null,
+    val name: String? = null,
+    val country: String? = null,
+    val match: List<StatPalMatch> = emptyList()
+)
 
 data class StatPalMatch(
-    @SerializedName("id") val id: String?,
-    @SerializedName("main_id") val mainId: String?,
-    @SerializedName("date") val date: String?,
-    @SerializedName("time") val time: String?,
-    @SerializedName("status") val status: String?,
-    @SerializedName("home") val home: StatPalTeam?,
-    @SerializedName("away") val away: StatPalTeam?
+    @SerializedName("main_id") val mainId: String? = null,
+    val id: String? = null,
+    val date: String? = null,
+    val time: String? = null,
+    val status: String? = null,
+    val home: StatPalTeam? = null,
+    val away: StatPalTeam? = null
 )
 
 data class StatPalTeam(
-    @SerializedName("id") val id: String?,
-    @SerializedName("name") val name: String?,
-    @SerializedName("goals") val goals: String?,
-    @SerializedName("logo") val logo: String?,
-    @SerializedName("image") val image: String?
+    val id: String? = null,
+    val name: String? = null,
+    val logo: String? = null,
+    val image: String? = null,
+    val goals: String? = null
 )
 
-// H2H
-data class StatPalH2HResponse(
-    @SerializedName("head_to_head") val headToHead: HeadToHeadData?
+// ==========================================
+// H2H (EGYMÁS ELLENI MÉRLEGEK)
+// ==========================================
+data class H2HResponse(
+    @SerializedName("head_to_head") val headToHead: HeadToHeadContainer? = null
 )
 
-data class HeadToHeadData(
-    @SerializedName("recent_meetings") val recentMeetings: RecentMeetings?
+data class HeadToHeadContainer(
+    @SerializedName("recent_meetings") val recentMeetings: RecentMeetings? = null
 )
 
 data class RecentMeetings(
-    @SerializedName("match") private val matchElement: JsonElement?
-) {
-    val match: List<H2HMatch>
-        get() {
-            if (matchElement == null || matchElement.isJsonNull) return emptyList()
-            val gson = Gson()
-            return try {
-                if (matchElement.isJsonArray) {
-                    val listType = object : TypeToken<List<H2HMatch>>() {}.type
-                    gson.fromJson(matchElement, listType) ?: emptyList()
-                } else if (matchElement.isJsonObject) {
-                    val obj = matchElement.asJsonObject
-                    listOfNotNull(gson.fromJson(obj, H2HMatch::class.java))
-                } else emptyList()
-            } catch (_: Exception) {
-                emptyList()
-            }
-        }
-}
+    val match: List<H2HMatch>? = null
+)
 
 data class H2HMatch(
-    @SerializedName("date") val date: String?,
-    @SerializedName("team1_name") val team1Name: String?,
-    @SerializedName("team2_name") val team2Name: String?,
-    @SerializedName("team1_score") val team1Score: String?,
-    @SerializedName("team2_score") val team2Score: String?
+    val date: String? = null,
+    @SerializedName("team1_name") val team1Name: String? = null,
+    @SerializedName("team2_name") val team2Name: String? = null,
+    @SerializedName("team1_score") val team1Score: String? = null,
+    @SerializedName("team2_score") val team2Score: String? = null
 )
 
-// INJURIES
-data class StatPalInjuriesResponse(
-    @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuriesData?
+// ==========================================
+// SÉRÜLTEK ÉS ELTILTOOTTAK
+// ==========================================
+data class InjuriesResponse(
+    @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuriesContainer? = null
 )
 
-data class InjuriesData(
-    @SerializedName("league") val league: List<InjuryLeague>?
+data class InjuriesContainer(
+    val league: List<InjuryLeague>? = null
 )
 
 data class InjuryLeague(
-    @SerializedName("match") val match: List<InjuryMatch>?
+    val match: List<InjuryMatch>? = null
 )
 
 data class InjuryMatch(
-    @SerializedName("main_id") val mainId: String?,
-    @SerializedName("home") val home: InjuryTeam?,
-    @SerializedName("away") val away: InjuryTeam?
+    @SerializedName("main_id") val mainId: String? = null,
+    val home: InjuryTeam? = null,
+    val away: InjuryTeam? = null
 )
 
 data class InjuryTeam(
-    @SerializedName("name") val name: String?,
-    @SerializedName("sidelined") val sidelined: SidelinedData?
+    val name: String? = null,
+    val sidelined: SidelinedData? = null
 )
 
 data class SidelinedData(
-    @SerializedName("to_miss") val toMiss: PlayerList?,
-    @SerializedName("questionable") val questionable: PlayerList?
+    @SerializedName("to_miss") val toMiss: SidelinedGroup? = null,
+    val questionable: SidelinedGroup? = null
 )
 
-data class PlayerList(
-    @SerializedName("player") val player: List<InjuryPlayer>?
+data class SidelinedGroup(
+    val player: List<PlayerItem>? = null
 )
 
-data class InjuryPlayer(
-    @SerializedName("name") val name: String?,
-    @SerializedName("status") val status: String?
+data class PlayerItem(
+    val name: String? = null,
+    val status: String? = null
 )
 
-// LINEUPS
+// ==========================================
+// KEZDŐCSAPATOK
+// ==========================================
 data class StatPalLineupResponse(
-    @SerializedName("home") val home: LineupTeam?,
-    @SerializedName("away") val away: LineupTeam?
+    val home: LineupTeam? = null,
+    val away: LineupTeam? = null
 )
 
 data class LineupTeam(
-    @SerializedName("team_name") val teamName: String?,
-    @SerializedName("team_formation") val teamFormation: String?,
-    @SerializedName("coach") val coach: CoachData?,
-    @SerializedName("starting_xi") val startingXi: List<LineupPlayer>?
+    @SerializedName("team_name") val teamName: String? = null,
+    @SerializedName("team_formation") val teamFormation: String? = null,
+    val coach: Coach? = null,
+    @SerializedName("starting_xi") val startingXi: List<StartingPlayer>? = null
 )
 
-data class CoachData(
-    @SerializedName("name") val name: String?
+data class Coach(val name: String? = null)
+
+data class StartingPlayer(
+    val number: String? = null,
+    val name: String? = null,
+    val position: String? = null
 )
 
-data class LineupPlayer(
-    @SerializedName("number") val number: String?,
-    @SerializedName("name") val name: String?,
-    @SerializedName("position") val position: String?
-)
-
-// PREDICTIONS
-data class StatPalPredictionResponse(
-    @SerializedName("prediction") val prediction: PredictionData?
+// ==========================================
+// AI MECCS TIPP ÉS ELEMZÉS
+// ==========================================
+data class PredictionResponse(
+    val prediction: PredictionData? = null
 )
 
 data class PredictionData(
-    @SerializedName("choice") val choice: String?,
-    @SerializedName("reasoning") val reasoning: String?
+    val choice: String? = null,
+    val reasoning: String? = null
 )
 
-// STANDINGS
-data class StatPalStandingsResponse(
-    @SerializedName("standings") val standings: Any?
+// ==========================================
+// PRE-MATCH ODDS (VALÓDI MECCS ELŐTTI SZORZÓK)
+// ==========================================
+data class StatPalPrematchOddsResponse(
+    @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer? = null
 )
 
-// ODDS
-data class StatPalOddsResponse(
-    @SerializedName("odds") val odds: Any?
+data class PrematchOddsContainer(
+    val updated: String? = null,
+    @SerializedName("updated_ts") val updatedTs: Long? = null,
+    val league: PrematchOddsLeague? = null
+)
+
+data class PrematchOddsLeague(
+    val id: String? = null,
+    val name: String? = null,
+    val country: String? = null,
+    val match: List<PrematchOddsMatch>? = null
+)
+
+data class PrematchOddsMatch(
+    @SerializedName("main_id") val mainId: String? = null,
+    val date: String? = null,
+    val time: String? = null,
+    val home: StatPalTeam? = null,
+    val away: StatPalTeam? = null,
+    val odds: List<PrematchOddsCategory>? = null
+)
+
+data class PrematchOddsCategory(
+    val id: String? = null,
+    val name: String? = null,
+    val stop: String? = null,
+    val bookmaker: List<PrematchBookmaker>? = null
+)
+
+data class PrematchBookmaker(
+    val id: String? = null,
+    val name: String? = null,
+    val timestamp: String? = null,
+    val odd: List<PrematchOddValue>? = null
+)
+
+data class PrematchOddValue(
+    val name: String? = null,
+    val value: String? = null
 )
