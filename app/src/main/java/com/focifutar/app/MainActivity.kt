@@ -25,7 +25,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,13 +75,25 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
 }
 
 // ==========================================
-// LOGÓ URL HELPER (Relatív URL-ek kiegészítése)
+// HIVATALOS STATPAL LOGÓ URL GENERÁLÓ
 // ==========================================
-fun getFullLogoUrl(rawUrl: String?): String? {
-    if (rawUrl.isNullOrBlank()) return null
-    val url = rawUrl.trim()
+fun getTeamLogoUrl(team: StatPalTeam?, apiKey: String): String? {
+    if (team == null) return null
+    val teamId = team.id?.trim()
+
+    // Ha van érvényes csapat azonosító és API kulcs, a hivatalos StatPal Image endpointot használjuk
+    if (!teamId.isNullOrBlank() && apiKey.isNotBlank()) {
+        return "https://statpal.io/api/v2/soccer/images?type=team&id=$teamId&access_key=$apiKey"
+    }
+
+    // Tartalék opció, ha az API-ból közvetlen link érkezne
+    val raw = team.logo ?: team.image ?: team.badge ?: team.logoPath ?: return null
+    val url = raw.trim()
+    if (url.isBlank()) return null
+
     return when {
-        url.startsWith("http://") || url.startsWith("https://") -> url
+        url.startsWith("https://") -> url
+        url.startsWith("http://") -> url.replace("http://", "https://")
         url.startsWith("//") -> "https:$url"
         url.startsWith("/") -> "https://statpal.io$url"
         else -> "https://statpal.io/$url"
@@ -94,16 +105,18 @@ fun getFullLogoUrl(rawUrl: String?): String? {
 // ==========================================
 @Composable
 fun TeamLogo(
-    logoUrl: String?,
-    teamName: String,
+    team: StatPalTeam?,
     modifier: Modifier = Modifier.size(22.dp),
     fontSize: TextUnit = 11.sp
 ) {
-    val fullUrl = getFullLogoUrl(logoUrl)
+    val context = LocalContext.current
+    val apiKey = getApiKey(context)
+    val logoUrl = remember(team, apiKey) { getTeamLogoUrl(team, apiKey) }
+    val teamName = team?.name ?: ""
 
-    if (!fullUrl.isNullOrBlank()) {
+    if (!logoUrl.isNullOrBlank()) {
         AsyncImage(
-            model = fullUrl,
+            model = logoUrl,
             contentDescription = teamName,
             contentScale = ContentScale.Fit,
             modifier = modifier.clip(CircleShape)
@@ -201,7 +214,7 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 // ==========================================
-// OPTIMÁLIS AMATŐR & REGIONÁLIS LIGA SZŰRŐ
+// OPTIMÁLIS AMATŐR SZŰRŐ
 // ==========================================
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
@@ -350,76 +363,73 @@ fun translateChoice(choice: String?): String {
 }
 
 // ==========================================
-// AI TIPP TELJES MONDAT- ÉS KIFINOMULT SZÓTÁR-FORDÍTÓ
+// DYNAMIKUS ÉS TELJES AI ELEMZÉS MAGYARÍTÓ
 // ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
     var result: String = text
 
-    val phraseReplacements = listOf(
-        // Teljes mondatsablonok a legpontosabb fordításért
+    val dict = mapOf(
         "is unbeaten so far this season, playing confidently in their new" to "ebben a szezonban még veretlen, és magabiztosan játszik az új",
-        "with strong recent form including a 2-0 win in their last home match" to "meggyőző formában van, beleértve a legutóbbi hazai 2-0-s győzelmet",
-        "and a 4-1 away win against" to "és a korábbi 4-1-es vendéggyőzelmet a(z)",
-        "has injury doubts for their goalkeeper and key attackers sidelined" to "kapusának játéka kétséges, míg kulcsfontosságú támadói sérülés miatt hiányoznak",
-        "and they have struggled away with only one away win this season" to "és vendégként szenvednek: ebben a szezonban mindössze egyetlen győzelmük van idegenben",
+        "with strong recent form including a 2-0 win in their last home match" to "meggyőző formában van, beleértve a legutóbbi hazai 2-0-s győzelmét",
+        "has injury doubts for their goalkeeper and key attackers sidelined" to "kapusának és kulcstámadóinak játéka sérülés miatt kétséges",
+        "and they have struggled away with only one away win this season" to "és idegenben gyengélkednek: ebben a szezonban mindössze egy vendéggyőzelmük van",
         "The head-to-head record favors" to "Az egymás elleni mérleg a következőt favorizálja:",
-        "slightly at home, and market odds strongly support a" to "kissé hazai pályán, és a fogadási oddsok is erőtelyen támogatják a(z)",
+        "slightly at home, and market odds strongly support a" to "kissé hazai pályán, és a fogadási oddsok is határozottan támogatják a(z)",
         "win. Tactical insights suggest" to "győzelmét. A taktikai elemzés szerint",
         "'s solid defense and home advantage will be key against" to "stabil védelme és hazai pályája kulcsfontosságú lesz a(z)",
         "'s possession-based but less effective away performances." to "labdabirtoklásra épülő, de idegenben kevésbé hatékony játéka ellen.",
-
-        // Egyedi kifejezések és összetett szavak
         "has a strong historical head-to-head advantage over" to "jelentős egymás elleni előnnyel rendelkezik a következőkkel szemben:",
         "have a closely matched recent head-to-head record with many draws" to "szoros és kiegyenlített egymás elleni mérleggel rendelkeznek, sok döntetlennel",
         "have a closely matched recent head-to-head record" to "szoros egymás elleni mérleggel rendelkeznek",
-        "especially at home" to "különösen hazai pályán",
-        "winning 16 of 24 home encounters" to "megnyerve a 24 hazai mérkőzésből 16-ot",
-        "home encounters" to "hazai mérkőzést",
-        "Despite some recent struggles in friendlies" to "A legutóbbi barátságos mérkőzések nehézségei ellenére",
-        "squad is largely intact except for one defender sidelined" to "a keret egy sérült védőt leszámítva hiánytalan",
-        "while" to "míg a(z)",
-        "also has a key midfielder out" to "csapatában is hiányzik egy kulcsfontosságú középpályás",
-        "The home advantage at" to "A hazai pálya előnye a",
-        "and Standard's deeper squad quality" to "valamint a hazaiak mélyebb, minőségibb kerete",
-        "recent transfer activity suggest they are favored to win" to "és a friss átigazolások alapján ők a mérkőzés esélyesei",
-        "Market odds also support a" to "A fogadási oddsok is a következőt támogatják:",
-        "with odds of" to "szorzóval,",
-        "indicating confidence in" to "jelezve a bizalmat a következőkben:",
-        "chances" to "esélyei",
-        "in their last meetings" to "a legutóbbi összecsapásaikon",
-        "Both teams are in good form" to "Mindkét csapat jó formának örvend",
-        "unbeaten at home recently" to "hazai pályán veretlen mostanában",
-        "showing solid away performances" to "meggyőzően szerepel vendégként",
         "The lineups are near full strength with no significant injuries" to "A keretek hiányzók nélkül, közel teljes erősségűek",
         "and the market odds also suggest a balanced contest" to "és a fogadási oddsok is szoros mérkőzést sejtetnek",
         "Given these factors, a draw is the most likely outcome" to "Ezek alapján a döntetlen a legvalószínűbb kimenetel",
-        "is the most likely outcome" to "a legvalószínűbb kimenetel",
+        "squad is largely intact except for one defender sidelined" to "a keret egy sérült védőt leszámítva hiánytalan",
+        "recent transfer activity suggest they are favored to win" to "és a friss átigazolások alapján ők a mérkőzés esélyesei",
         "is playing at home with a fully fit squad" to "hazai pályán játszik teljes kerettel",
+        "key attacking players fit and motivated" to "a kulcsfontosságú támadók fittek és motiváltak",
+        "a 4-1 away win against" to "egy 4-1-es idegenbeli győzelmet a következők ellen:",
+        "winning 16 of 24 home encounters" to "megnyerve a 24 hazai mérkőzésből 16-ot",
+        "Despite some recent struggles in friendlies" to "A legutóbbi barátságos mérkőzések nehézségei ellenére",
+        "also has a key midfielder out" to "csapatában is hiányzik egy kulcsfontosságú középpályás",
+        "and Standard's deeper squad quality" to "valamint a hazaiak mélyebb, minőségibb kerete",
+        "a home win with a reasonable margin" to "meggyőző hazai győzelmet",
+        "has shown defensive vulnerabilities" to "védelmi sebezhetőséget mutatott",
+        "has a less favorable away record" to "gyengébb vendégmérleggel rendelkezik",
+        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában",
+        "Market odds also support a" to "A fogadási oddsok is támogatják a(z)",
+        "the market odds favor" to "a fogadási oddsok a következőt favorizálják:",
+        "is the most likely outcome" to "a legvalószínűbb kimenetel",
+        "unbeaten at home recently" to "hazai pályán veretlen mostanában",
+        "showing solid away performances" to "meggyőzően szerepel vendégként",
+        "holds an unbeaten record" to "veretlen sorozattal bír",
+        "recent head-to-head win" to "legutóbbi egymás elleni győzelem",
+        "shows stronger form" to "jobb formát mutat",
         "aims to bounce back" to "javítani szeretne",
         "after an opening day loss" to "a nyitófordulós vereség után",
         "despite a stable lineup" to "a stabil felállás ellenére",
-        "has shown defensive vulnerabilities" to "védelmi sebezhetőséget mutatott",
-        "has a less favorable away record" to "gyengébb vendégmérleggel rendelkezik",
-        "holds an unbeaten record" to "veretlen sorozattal bír",
-        "the market odds favor" to "a fogadási oddsok a következőt favorizálják:",
-        "a home win with a reasonable margin" to "meggyőző hazai győzelem",
-        "home win" to "hazai győzelem",
-        "away win" to "vendég győzelem",
-        "recent head-to-head win" to "legutóbbi egymás elleni győzelem",
-        "shows stronger form" to "jobb formát mutat",
-        "key attacking players fit and motivated" to "a kulcsfontosságú támadók fittek és motiváltak",
+        "Both teams are in good form" to "Mindkét csapat jó formának örvend",
+        "in their last meetings" to "a legutóbbi összecsapásaikon",
+        "especially at home" to "különösen hazai pályán",
+        "is unbeaten so far" to "ebben a szezonban veretlen",
+        "with odds of" to "szorzóval,",
+        "indicating confidence in" to "jelezve a bizalmat a következőkben:",
+        "home advantage at" to "hazai pálya előnye a",
         "lacks injuries" to "nincsenek sérültjei",
-        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában",
-
-        // Általános angol fordítószavak a tisztításhoz
-        "is unbeaten" to "veretlen",
-        "recently" to "mostanában",
         "this season" to "ebben a szezonban",
-        "against" to "ellen"
+        "home match" to "hazai mérkőzés",
+        "away win" to "vendég győzelem",
+        "home win" to "hazai győzelem",
+        "recently" to "mostanában",
+        "against" to "ellen",
+        "chances" to "esélyei",
+        "while" to "míg"
     )
 
-    for ((en, hu) in phraseReplacements) {
+    val sortedEntries = dict.entries.sortedByDescending { it.key.length }
+
+    for ((en, hu) in sortedEntries) {
         result = result.replace(Regex("(?i)" + Regex.escape(en)), hu)
     }
 
@@ -924,8 +934,7 @@ fun MatchRow(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(
-                        logoUrl = match.home?.logo ?: match.home?.image,
-                        teamName = match.home?.name ?: "",
+                        team = match.home,
                         modifier = Modifier.size(20.dp),
                         fontSize = 10.sp
                     )
@@ -942,8 +951,7 @@ fun MatchRow(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(
-                        logoUrl = match.away?.logo ?: match.away?.image,
-                        teamName = match.away?.name ?: "",
+                        team = match.away,
                         modifier = Modifier.size(20.dp),
                         fontSize = 10.sp
                     )
@@ -1087,8 +1095,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         TeamLogo(
-                            logoUrl = match.home?.logo ?: match.home?.image,
-                            teamName = match.home?.name ?: "",
+                            team = match.home,
                             modifier = Modifier.size(40.dp),
                             fontSize = 18.sp
                         )
@@ -1100,8 +1107,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         TeamLogo(
-                            logoUrl = match.away?.logo ?: match.away?.image,
-                            teamName = match.away?.name ?: "",
+                            team = match.away,
                             modifier = Modifier.size(40.dp),
                             fontSize = 18.sp
                         )
