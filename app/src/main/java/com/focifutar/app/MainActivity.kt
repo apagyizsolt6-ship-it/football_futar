@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 // ==========================================
 // TÉMA SZÍNEK (SÖTÉT ÉS VILÁGOS MÓD)
@@ -256,8 +257,23 @@ fun FormIndicator(formStr: String, colors: AppColors) {
     }
 }
 
-fun formatDateForApi(cal: Calendar): String {
-    return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+// KISZÁMÍTJA A NAPOKBAN MÉRT ELTOLÓDÁST (-7 ÉS +7 KÖZÖTT)
+fun calculateDayOffset(targetCal: Calendar): Int {
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val target = (targetCal.clone() as Calendar).apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val diffMillis = target.timeInMillis - today.timeInMillis
+    val diffDays = TimeUnit.MILLISECONDS.toDays(diffMillis).toInt()
+    return diffDays.coerceIn(-7, 7)
 }
 
 fun formatDateForDisplay(cal: Calendar): String {
@@ -268,53 +284,6 @@ fun formatDateForDisplay(cal: Calendar): String {
 fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
     return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
-}
-
-fun isToday(cal: Calendar): Boolean {
-    return isSameDay(cal, Calendar.getInstance())
-}
-
-fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
-    if (matchDateStr.isNullOrBlank()) {
-        return isToday(targetCal)
-    }
-
-    val targetY = targetCal.get(Calendar.YEAR)
-    val targetM = targetCal.get(Calendar.MONTH) + 1
-    val targetD = targetCal.get(Calendar.DAY_OF_MONTH)
-
-    val dTwo = String.format("%02d", targetD)
-    val mTwo = String.format("%02d", targetM)
-    val yFour = targetY.toString()
-
-    val raw = matchDateStr.trim()
-
-    if (raw.contains("$yFour-$mTwo-$dTwo") ||
-        raw.contains("$dTwo.$mTwo.$yFour") ||
-        raw.contains("$dTwo-$mTwo-$yFour") ||
-        raw.contains("$yFour.$mTwo.$dTwo")) {
-        return true
-    }
-
-    val patterns = listOf(
-        "dd.MM.yyyy HH:mm", "yyyy-MM-dd HH:mm", "dd.MM.yyyy", "yyyy-MM-dd",
-        "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss'Z'", "MM/dd/yyyy"
-    )
-
-    for (pattern in patterns) {
-        try {
-            val sdf = SimpleDateFormat(pattern, Locale.US)
-            val parsed = sdf.parse(raw)
-            if (parsed != null) {
-                val matchCal = Calendar.getInstance().apply { time = parsed }
-                return matchCal.get(Calendar.YEAR) == targetY &&
-                       (matchCal.get(Calendar.MONTH) + 1) == targetM &&
-                       matchCal.get(Calendar.DAY_OF_MONTH) == targetD
-            }
-        } catch (_: Exception) {}
-    }
-
-    return false
 }
 
 fun isLiveMatch(match: StatPalMatch): Boolean {
@@ -398,7 +367,7 @@ fun translateLeagueName(leagueName: String?): String {
         "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN", "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN",
         "LATVIA" to "🇱🇻 LETTORSZÁG", "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG",
         "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
-        "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲🇰 ÉSZAK-MAKEDÓNIA",
+        "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲KZ ÉSZAK-MAKEDÓNIA",
         "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY", "PERU" to "🇵🇪 PERU",
         "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA", "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA",
         "RUSSIA" to "🇷🇺 OROSZORSZÁG", "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA",
@@ -694,8 +663,8 @@ fun MatchesListScreen(
             return
         }
 
-        val dateParam = formatDateForApi(selectedCalendar)
-        val cacheKey = "matches_$dateParam"
+        val offset = calculateDayOffset(selectedCalendar)
+        val cacheKey = "matches_offset_$offset"
 
         if (!forceRefresh) {
             val cached: List<StatPalLeague>? = ApiCacheManager.get(cacheKey)
@@ -711,17 +680,12 @@ fun MatchesListScreen(
         errorMessage = null
         coroutineScope.launch {
             try {
-                // Kizárólag a Get Matches Recent / Upcoming végpontot hívjuk meg
-                val response = StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                // A PONTOS CÍMMEL ÉS A MEGFELELŐ OFFSET PARAMÉTERREL HÍVJUK MEG
+                val response = StatPalClient.service.getDailyMatches(apiKey, offset)
 
                 val rawLeagues = response.liveMatches?.league.orEmpty()
 
-                val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }.mapNotNull { league ->
-                    val matchesOnDate = league.match.filter { match ->
-                        isMatchOnSelectedDate(match.date, selectedCalendar)
-                    }
-                    if (matchesOnDate.isNotEmpty()) league else null
-                }
+                val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                 val newScoresMap = mutableMapOf<String, String>()
                 validLeagues.flatMap { it.match }.forEach { m ->
@@ -751,7 +715,7 @@ fun MatchesListScreen(
             } catch (e: Exception) {
                 val keyMasked = if (apiKey.length > 6) "${apiKey.take(4)}...${apiKey.takeLast(4)} (${apiKey.length} kar.)" else "Hibás/Hiányzó kulcs"
                 val errDetails = if (e is HttpException) "HTTP ${e.code()} (${e.message()})" else e.localizedMessage ?: "Ismeretlen hiba"
-                errorMessage = "API Hiba (recent-upcoming végpont):\n\nBeállított kulcs: $keyMasked\nHiba: $errDetails\n\nKérlek ellenőrizd a kulcsodat a StatPal.io fiókodban vagy illeszd be újra a ⚙️ Beállításokban!"
+                errorMessage = "API Hiba (matches/daily végpont):\n\nBeállított kulcs: $keyMasked\nHiba: $errDetails\nOffset: $offset\n\nKérlek ellenőrizd a kulcsodat a StatPal.io fiókodban vagy illeszd be újra a ⚙️ Beállításokban!"
             } finally {
                 isLoading = false
             }
@@ -1040,11 +1004,7 @@ fun MatchesListScreen(
                     }
 
                     if (!isCollapsed) {
-                        val matches = league.match.filter { match ->
-                            isMatchOnSelectedDate(match.date, selectedCalendar)
-                        }
-
-                        items(matches) { match ->
+                        items(league.match) { match ->
                             val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                             val isFav = favoriteIds.contains(matchId)
 
