@@ -3,6 +3,7 @@ package com.focifutar.app
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
 import java.lang.reflect.Type
 
@@ -66,6 +67,7 @@ data class StatPalLiveMatchesResponse(
 
 data class StatPalLiveMatchesContainer(
     val updated: String? = null,
+    @JsonAdapter(LeagueListDeserializer::class)
     @SerializedName("league") val league: List<StatPalLeague>? = emptyList()
 )
 
@@ -74,6 +76,7 @@ data class StatPalLeague(
     val name: String? = null,
     val country: String? = null,
     val cup: String? = null,
+    @JsonAdapter(MatchListDeserializer::class)
     @SerializedName("match") val match: List<StatPalMatch> = emptyList()
 )
 
