@@ -38,6 +38,8 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -88,6 +90,16 @@ data class BetSlipItem(
     val odds: Double
 )
 
+data class SavedBet(
+    val id: String,
+    val items: List<BetSlipItem>,
+    val stake: Double,
+    val totalOdds: Double,
+    val potentialWin: Double,
+    val dateStr: String,
+    val status: String // "FÜGGŐBEN" / "NYERT" / "VESZTETT"
+)
+
 fun isDarkModeSaved(context: Context): Boolean {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getBoolean("is_dark_mode", true)
@@ -125,6 +137,25 @@ fun getVirtualBalance(context: Context): Double {
 fun updateVirtualBalance(context: Context, newBalance: Double) {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     prefs.edit().putFloat("virtual_balance", newBalance.toFloat()).apply()
+}
+
+fun getSavedBets(context: Context): List<SavedBet> {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val json = prefs.getString("saved_bets_json", null) ?: return emptyList()
+    val type = object : TypeToken<List<SavedBet>>() {}.type
+    return try {
+        Gson().fromJson(json, type) ?: emptyList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+fun saveNewBet(context: Context, bet: SavedBet) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val currentBets = getSavedBets(context).toMutableList()
+    currentBets.add(0, bet)
+    val json = Gson().toJson(currentBets)
+    prefs.edit().putString("saved_bets_json", json).apply()
 }
 
 // ==========================================
@@ -522,6 +553,9 @@ class MainActivity : ComponentActivity() {
                         composable("api_settings") {
                             ApiSettingsScreen(navController, colors)
                         }
+                        composable("saved_bets") {
+                            SavedBetsScreen(navController, colors)
+                        }
                         composable("match_detail") {
                             selectedMatchGlobal?.let { match ->
                                 MatchDetailScreen(match, selectedLeagueIdGlobal, navController, colors, betSlipItems) { item ->
@@ -549,8 +583,22 @@ class MainActivity : ComponentActivity() {
                                 onSaveBet = { stake ->
                                     val currentBal = getVirtualBalance(context)
                                     if (currentBal >= stake) {
-                                        updateVirtualBalance(context, currentBal - stake)
-                                        Toast.makeText(context, "Szelvény elmentve! Tét: ${stake.toInt()} Ft", Toast.LENGTH_SHORT).show()
+                                        val newBal = currentBal - stake
+                                        updateVirtualBalance(context, newBal)
+
+                                        val totalOdds = betSlipItems.fold(1.0) { acc, i -> acc * i.odds }
+                                        val newBet = SavedBet(
+                                            id = UUID.randomUUID().toString(),
+                                            items = betSlipItems,
+                                            stake = stake,
+                                            totalOdds = totalOdds,
+                                            potentialWin = totalOdds * stake,
+                                            dateStr = SimpleDateFormat("MM.dd HH:mm", Locale.getDefault()).format(Date()),
+                                            status = "FÜGGŐBEN"
+                                        )
+                                        saveNewBet(context, newBet)
+
+                                        Toast.makeText(context, "Fogadás elmentve! Tét: ${stake.toInt()} Ft", Toast.LENGTH_SHORT).show()
                                         betSlipItems = emptyList()
                                     } else {
                                         Toast.makeText(context, "Nincs elég virtuális egyenleged!", Toast.LENGTH_SHORT).show()
@@ -716,7 +764,13 @@ fun MatchesListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable {
+                    virtualBalance = getVirtualBalance(context)
+                    navController.navigate("saved_bets")
+                }
+            ) {
                 Text(
                     text = "FOOTBALL FUTÁR",
                     color = colors.accentPrimary,
@@ -732,7 +786,7 @@ fun MatchesListScreen(
                         .padding(horizontal = 6.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = "💰 ${virtualBalance.toInt()} Ft",
+                        text = "💰 ${virtualBalance.toInt()} Ft 🎟️",
                         color = colors.accentYellow,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -966,6 +1020,105 @@ fun MatchesListScreen(
                                     navController.navigate("match_detail")
                                 }
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SavedBetsScreen(navController: NavController, colors: AppColors) {
+    val context = LocalContext.current
+    var savedBets by remember { mutableStateOf(getSavedBets(context)) }
+    var balance by remember { mutableStateOf(getVirtualBalance(context)) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "← Vissza",
+                color = colors.accentPrimary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { navController.popBackStack() }
+            )
+            Button(
+                onClick = {
+                    updateVirtualBalance(context, 50000.0)
+                    balance = 50000.0
+                    Toast.makeText(context, "Egyenleg visszaállítva 50 000 Ft-ra!", Toast.LENGTH_SHORT).show()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
+                border = BorderStroke(1.dp, colors.accentYellow)
+            ) {
+                Text("Egyenleg Reset", color = colors.accentYellow, fontSize = 11.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.accentYellow, RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("VIRTUÁLIS BANKROLL", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("${balance.toInt()} Ft", color = colors.accentYellow, fontSize = 24.sp, fontWeight = FontWeight.Black)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("ELMENTETT FOGADÁSOK", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (savedBets.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Még nincsenek elmentett fogadásaid.", color = colors.textMuted, fontSize = 13.sp)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(savedBets) { bet ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(bet.dateStr, color = colors.textMuted, fontSize = 10.sp)
+                                Text(bet.status, color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            bet.items.forEach { item ->
+                                Text("• ${item.matchTitle}: ${item.choiceName} (${item.odds})", color = colors.textPrimary, fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Divider(color = colors.border)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Tét: ${bet.stake.toInt()} Ft | Odds: %.2f".format(Locale.US, bet.totalOdds), color = colors.textMuted, fontSize = 11.sp)
+                                Text("Várható: ${bet.potentialWin.toInt()} Ft", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
