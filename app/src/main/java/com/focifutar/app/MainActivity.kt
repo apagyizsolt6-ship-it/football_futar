@@ -38,20 +38,58 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-val BackgroundDark = Color(0xFF101214)
-val CardBackground = Color(0xFF1A1D21)
-val AccentGreen = Color(0xFF00FF66)
-val AccentRed = Color(0xFFFF3366)
-val AccentYellow = Color(0xFFFFCC00)
-val TextWhite = Color(0xFFFFFFFF)
-val TextMuted = Color(0xFF8C96A0)
+// ==========================================
+// TÉMA SZÍNEK (SÖTÉT ÉS VILÁGOS MÓD)
+// ==========================================
+data class AppColors(
+    val background: Color,
+    val cardBackground: Color,
+    val accentPrimary: Color,
+    val accentRed: Color,
+    val accentYellow: Color,
+    val textPrimary: Color,
+    val textMuted: Color,
+    val border: Color
+)
+
+val DarkColors = AppColors(
+    background = Color(0xFF101214),
+    cardBackground = Color(0xFF1A1D21),
+    accentPrimary = Color(0xFF00FF66), // Neon Zöld
+    accentRed = Color(0xFFFF3366),
+    accentYellow = Color(0xFFFFCC00),
+    textPrimary = Color(0xFFFFFFFF),
+    textMuted = Color(0xFF8C96A0),
+    border = Color(0xFF2A2E33)
+)
+
+val LightColors = AppColors(
+    background = Color(0xFFF1F5F9), // Letisztult világosszürke
+    cardBackground = Color(0xFFFFFFFF), // Tiszta fehér
+    accentPrimary = Color(0xFF0284C7), // Királykék / Sportkék
+    accentRed = Color(0xFFE11D48),
+    accentYellow = Color(0xFFD97706),
+    textPrimary = Color(0xFF0F172A), // Sötét pala fekete
+    textMuted = Color(0xFF64748B),
+    border = Color(0xFFE2E8F0)
+)
+
+fun isDarkModeSaved(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getBoolean("is_dark_mode", true)
+}
+
+fun saveDarkMode(context: Context, isDark: Boolean) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean("is_dark_mode", isDark).apply()
+}
 
 // ==========================================
 // API TÁROLÓ (CACHE MANAGER)
 // ==========================================
 object ApiCacheManager {
     private val cacheMap = mutableMapOf<String, Pair<Long, Any>>()
-    private const val DEFAULT_TTL_MS = 5 * 60 * 1000L // 5 perc tárolás
+    private const val DEFAULT_TTL_MS = 5 * 60 * 1000L
 
     fun <T> get(key: String, ttlMs: Long = DEFAULT_TTL_MS): T? {
         val entry = cacheMap[key] ?: return null
@@ -66,10 +104,6 @@ object ApiCacheManager {
     fun put(key: String, value: Any) {
         cacheMap[key] = Pair(System.currentTimeMillis(), value)
     }
-
-    fun remove(key: String) {
-        cacheMap.remove(key)
-    }
 }
 
 fun saveApiKey(context: Context, key: String) {
@@ -82,9 +116,6 @@ fun getApiKey(context: Context): String {
     return prefs.getString("statpal_api_key", "")?.trim() ?: ""
 }
 
-// ==========================================
-// KEDVENCEK TÁROLÁSA
-// ==========================================
 fun getFavoriteMatchIds(context: Context): Set<String> {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getStringSet("favorite_matches", emptySet()) ?: emptySet()
@@ -101,9 +132,6 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
     prefs.edit().putStringSet("favorite_matches", current).apply()
 }
 
-// ==========================================
-// HIVATALOS STATPAL LOGÓ URL GENERÁLÓ
-// ==========================================
 fun getTeamLogoUrl(team: StatPalTeam?, apiKey: String): String? {
     if (team == null) return null
     val teamId = team.id?.trim()
@@ -125,12 +153,10 @@ fun getTeamLogoUrl(team: StatPalTeam?, apiKey: String): String? {
     }
 }
 
-// ==========================================
-// CSAPAT LOGÓ COMPOSABLE
-// ==========================================
 @Composable
 fun TeamLogo(
     team: StatPalTeam?,
+    colors: AppColors,
     modifier: Modifier = Modifier.size(22.dp),
     fontSize: TextUnit = 11.sp
 ) {
@@ -150,13 +176,13 @@ fun TeamLogo(
         Box(
             modifier = modifier
                 .clip(CircleShape)
-                .background(CardBackground)
-                .border(1.dp, AccentGreen.copy(alpha = 0.4f), CircleShape),
+                .background(colors.cardBackground)
+                .border(1.dp, colors.accentPrimary.copy(alpha = 0.4f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = teamName.take(1).uppercase(),
-                color = AccentGreen,
+                color = colors.accentPrimary,
                 fontSize = fontSize,
                 fontWeight = FontWeight.Bold
             )
@@ -164,9 +190,6 @@ fun TeamLogo(
     }
 }
 
-// ==========================================
-// DÁTUM HELPEREK ÉS SZŰRÉS
-// ==========================================
 fun formatDateForApi(cal: Calendar): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
 }
@@ -225,14 +248,10 @@ fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
     return false
 }
 
-// ==========================================
-// ÉLŐ MECCS FELISMERŐ (PONTOSÍTOTT)
-// ==========================================
 fun isLiveMatch(match: StatPalMatch): Boolean {
     val rawStatus = (match.status ?: match.time ?: "").trim().uppercase()
     if (rawStatus.isBlank()) return false
 
-    // Bármilyen elhalasztott, elmaradt, félbeszakadt meccs kizárása
     if (rawStatus.contains("POSTP") || rawStatus.contains("PPD") || 
         rawStatus.contains("CANC") || rawStatus.contains("ABAND") || 
         rawStatus.contains("SUSP") || rawStatus.contains("INTERR") ||
@@ -240,13 +259,11 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
         return false
     }
 
-    // Bármilyen lezárult meccs kizárása
     if (rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || 
         rawStatus == "AET" || rawStatus == "AP" || rawStatus == "ENDED") {
         return false
     }
 
-    // Kezdési időpontok (pl. "15:45", "05:00", "23:00") kizárása - kivéve ha percre utaló jellel rendelkezik mint "45'"
     if (rawStatus.contains(":") && !rawStatus.contains("'")) {
         return false
     }
@@ -254,9 +271,6 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
     return true
 }
 
-// ==========================================
-// OPTIMÁLIS AMATŐR SZŰRŐ
-// ==========================================
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
     val nameLower = leagueName.lowercase()
@@ -278,9 +292,6 @@ fun isAllowedLeague(leagueName: String?): Boolean {
     return forbiddenKeywords.none { nameLower.contains(it) }
 }
 
-// ==========================================
-// ORSZÁG ÉS LIGA MAGYARÍTÓ
-// ==========================================
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
 
@@ -408,9 +419,6 @@ fun translateChoice(choice: String?): String {
     }
 }
 
-// ==========================================
-// MINTAILLESZTŐ ÉS DYNAMIKUS AI ELEMZÉS FORDÍTÓ
-// ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
     var result: String = text.trim()
@@ -502,19 +510,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val context = LocalContext.current
+            var isDarkMode by remember { mutableStateOf(isDarkModeSaved(context)) }
+            val colors = if (isDarkMode) DarkColors else LightColors
+
             MaterialTheme {
                 val navController = rememberNavController()
 
                 NavHost(navController = navController, startDestination = "matches_list") {
                     composable("matches_list") {
-                        MatchesListScreen(navController)
+                        MatchesListScreen(navController, isDarkMode, colors) { newMode ->
+                            isDarkMode = newMode
+                            saveDarkMode(context, newMode)
+                        }
                     }
                     composable("api_settings") {
-                        ApiSettingsScreen(navController)
+                        ApiSettingsScreen(navController, colors)
                     }
                     composable("match_detail") {
                         selectedMatchGlobal?.let { match ->
-                            MatchDetailScreen(match, navController)
+                            MatchDetailScreen(match, navController, colors)
                         }
                     }
                 }
@@ -524,7 +539,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MatchesListScreen(navController: NavController) {
+fun MatchesListScreen(
+    navController: NavController,
+    isDarkMode: Boolean,
+    colors: AppColors,
+    onToggleDarkMode: (Boolean) -> Unit
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -636,7 +656,7 @@ fun MatchesListScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(colors.background)
     ) {
         Row(
             modifier = Modifier
@@ -647,7 +667,7 @@ fun MatchesListScreen(navController: NavController) {
         ) {
             Text(
                 text = "FOOTBALL FUTÁR",
-                color = AccentGreen,
+                color = colors.accentPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black
             )
@@ -656,7 +676,7 @@ fun MatchesListScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(if (isSearchOpen) AccentGreen else CardBackground)
+                        .background(if (isSearchOpen) colors.accentPrimary else colors.cardBackground)
                         .clickable { isSearchOpen = !isSearchOpen }
                         .padding(8.dp)
                 ) {
@@ -666,7 +686,7 @@ fun MatchesListScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(if (isOnlyLiveFilter) AccentRed else CardBackground)
+                        .background(if (isOnlyLiveFilter) colors.accentRed else colors.cardBackground)
                         .clickable { isOnlyLiveFilter = !isOnlyLiveFilter }
                         .padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
@@ -675,17 +695,28 @@ fun MatchesListScreen(navController: NavController) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (totalLiveCount > 0) "ÉLŐ ($totalLiveCount)" else "ÉLŐ",
-                            color = TextWhite,
+                            color = if (isOnlyLiveFilter) Color.White else colors.textPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
+                // TÉMA VÁLTÓ GOMB (NAP / HOLD)
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(CardBackground)
+                        .background(colors.cardBackground)
+                        .clickable { onToggleDarkMode(!isDarkMode) }
+                        .padding(8.dp)
+                ) {
+                    Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 14.sp)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(colors.cardBackground)
                         .clickable {
                             collapsedLeagueIds = if (collapsedLeagueIds.size == leagues.size) {
                                 emptySet()
@@ -701,7 +732,7 @@ fun MatchesListScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(CardBackground)
+                        .background(colors.cardBackground)
                         .clickable { fetchMatches(forceRefresh = true) }
                         .padding(8.dp)
                 ) {
@@ -711,7 +742,7 @@ fun MatchesListScreen(navController: NavController) {
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(CardBackground)
+                        .background(colors.cardBackground)
                         .clickable { navController.navigate("api_settings") }
                         .padding(8.dp)
                 ) {
@@ -724,15 +755,15 @@ fun MatchesListScreen(navController: NavController) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Keresés csapat vagy bajnokság alapján...", color = TextMuted, fontSize = 13.sp) },
+                placeholder = { Text("Keresés csapat vagy bajnokság alapján...", color = colors.textMuted, fontSize = 13.sp) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentGreen,
-                    unfocusedBorderColor = CardBackground,
-                    focusedTextColor = TextWhite,
-                    unfocusedTextColor = TextWhite,
-                    focusedContainerColor = CardBackground,
-                    unfocusedContainerColor = CardBackground
+                    focusedBorderColor = colors.accentPrimary,
+                    unfocusedBorderColor = colors.border,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary,
+                    focusedContainerColor = colors.cardBackground,
+                    unfocusedContainerColor = colors.cardBackground
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -741,7 +772,7 @@ fun MatchesListScreen(navController: NavController) {
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = CardBackground),
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
             shape = RoundedCornerShape(0.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -759,13 +790,13 @@ fun MatchesListScreen(navController: NavController) {
                     }
                     selectedCalendar = newCal
                 }) {
-                    Text("◄", color = AccentGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("◄", color = colors.accentPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(BackgroundDark)
+                        .background(colors.background)
                         .clickable {
                             val year = selectedCalendar.get(Calendar.YEAR)
                             val month = selectedCalendar.get(Calendar.MONTH)
@@ -784,7 +815,7 @@ fun MatchesListScreen(navController: NavController) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = formatDateForDisplay(selectedCalendar),
-                        color = TextWhite,
+                        color = colors.textPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -794,12 +825,12 @@ fun MatchesListScreen(navController: NavController) {
                     if (!isToday(selectedCalendar)) {
                         Text(
                             text = "MA",
-                            color = AccentYellow,
+                            color = colors.accentYellow,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(CardBackground)
+                                .background(colors.cardBackground)
                                 .clickable { selectedCalendar = Calendar.getInstance() }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
                         )
@@ -812,7 +843,7 @@ fun MatchesListScreen(navController: NavController) {
                         }
                         selectedCalendar = newCal
                     }) {
-                        Text("►", color = AccentGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("►", color = colors.accentPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -820,7 +851,7 @@ fun MatchesListScreen(navController: NavController) {
 
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AccentGreen)
+                CircularProgressIndicator(color = colors.accentPrimary)
             }
         } else if (errorMessage != null) {
             Box(
@@ -831,7 +862,7 @@ fun MatchesListScreen(navController: NavController) {
             ) {
                 Text(
                     text = errorMessage!!,
-                    color = AccentRed,
+                    color = colors.accentRed,
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Medium
                 )
@@ -843,13 +874,14 @@ fun MatchesListScreen(navController: NavController) {
             ) {
                 if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter) {
                     item {
-                        LeagueHeader(title = "⭐ KEDVENC MECCSEK", isCollapsed = false, onToggle = {})
+                        LeagueHeader(title = "⭐ KEDVENC MECCSEK", isCollapsed = false, colors = colors, onToggle = {})
                     }
                     items(favoriteMatchesList) { match ->
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                         MatchRow(
                             match,
                             true,
+                            colors,
                             {
                                 toggleFavoriteMatch(context, matchId)
                                 favoriteIds = getFavoriteMatchIds(context)
@@ -870,6 +902,7 @@ fun MatchesListScreen(navController: NavController) {
                         LeagueHeader(
                             title = translateLeagueName(league.name),
                             isCollapsed = isCollapsed,
+                            colors = colors,
                             onToggle = {
                                 collapsedLeagueIds = if (isCollapsed) {
                                     collapsedLeagueIds - leagueKey
@@ -892,6 +925,7 @@ fun MatchesListScreen(navController: NavController) {
                             MatchRow(
                                 match,
                                 isFav,
+                                colors,
                                 {
                                     toggleFavoriteMatch(context, matchId)
                                     favoriteIds = getFavoriteMatchIds(context)
@@ -910,11 +944,11 @@ fun MatchesListScreen(navController: NavController) {
 }
 
 @Composable
-fun LeagueHeader(title: String, isCollapsed: Boolean, onToggle: () -> Unit) {
+fun LeagueHeader(title: String, isCollapsed: Boolean, colors: AppColors, onToggle: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(CardBackground)
+            .background(colors.cardBackground)
             .clickable { onToggle() }
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
@@ -925,14 +959,14 @@ fun LeagueHeader(title: String, isCollapsed: Boolean, onToggle: () -> Unit) {
         ) {
             Text(
                 text = title.uppercase(),
-                color = AccentGreen,
+                color = colors.accentPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
             Text(
                 text = if (isCollapsed) "▼" else "▲",
-                color = TextMuted,
+                color = colors.textMuted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -944,6 +978,7 @@ fun LeagueHeader(title: String, isCollapsed: Boolean, onToggle: () -> Unit) {
 fun MatchRow(
     match: StatPalMatch,
     isFavorite: Boolean,
+    colors: AppColors,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -952,14 +987,14 @@ fun MatchRow(
     val formattedTime = formatToLocalTime(match.date, rawStatus)
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = BackgroundDark),
+        colors = CardDefaults.cardColors(containerColor = colors.background),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .border(
                 width = 1.dp,
-                color = if (live) AccentRed.copy(alpha = 0.6f) else Color.Transparent,
+                color = if (live) colors.accentRed.copy(alpha = 0.8f) else colors.border,
                 shape = RoundedCornerShape(8.dp)
             )
     ) {
@@ -972,6 +1007,7 @@ fun MatchRow(
             Text(
                 text = if (isFavorite) "⭐" else "☆",
                 fontSize = 16.sp,
+                color = if (isFavorite) colors.accentYellow else colors.textMuted,
                 modifier = Modifier
                     .clickable { onToggleFavorite() }
                     .padding(end = 8.dp)
@@ -979,7 +1015,7 @@ fun MatchRow(
 
             Text(
                 text = formattedTime,
-                color = if (live) AccentRed else TextMuted,
+                color = if (live) colors.accentRed else colors.textMuted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.width(50.dp)
@@ -989,13 +1025,14 @@ fun MatchRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(
                         team = match.home,
+                        colors = colors,
                         modifier = Modifier.size(20.dp),
                         fontSize = 10.sp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = match.home?.name ?: "-",
-                        color = TextWhite,
+                        color = colors.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -1006,13 +1043,14 @@ fun MatchRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(
                         team = match.away,
+                        colors = colors,
                         modifier = Modifier.size(20.dp),
                         fontSize = 10.sp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = match.away?.name ?: "-",
-                        color = TextWhite,
+                        color = colors.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -1022,14 +1060,14 @@ fun MatchRow(
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = match.home?.goals ?: "0",
-                    color = if (live) AccentGreen else TextWhite,
+                    color = if (live) colors.accentPrimary else colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = match.away?.goals ?: "0",
-                    color = if (live) AccentGreen else TextWhite,
+                    color = if (live) colors.accentPrimary else colors.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
@@ -1038,11 +1076,8 @@ fun MatchRow(
     }
 }
 
-// ==========================================
-// MECCS RÉSZLETEI
-// ==========================================
 @Composable
-fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
+fun MatchDetailScreen(match: StatPalMatch, navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -1153,12 +1188,12 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(colors.background)
             .padding(16.dp)
     ) {
         Text(
             text = "← Vissza",
-            color = AccentGreen,
+            color = colors.accentPrimary,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clickable { navController.popBackStack() }
@@ -1166,8 +1201,10 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
         )
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = CardBackground),
-            modifier = Modifier.fillMaxWidth()
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -1175,7 +1212,7 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
             ) {
                 Text(
                     text = formatToLocalTime(match.date, match.status ?: match.time ?: ""),
-                    color = AccentRed,
+                    color = colors.accentRed,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
@@ -1189,23 +1226,25 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         TeamLogo(
                             team = match.home,
+                            colors = colors,
                             modifier = Modifier.size(40.dp),
                             fontSize = 18.sp
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(match.home?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(match.home?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
-                    Text("${match.home?.goals ?: "0"} - ${match.away?.goals ?: "0"}", color = AccentGreen, fontSize = 28.sp, fontWeight = FontWeight.Black)
+                    Text("${match.home?.goals ?: "0"} - ${match.away?.goals ?: "0"}", color = colors.accentPrimary, fontSize = 28.sp, fontWeight = FontWeight.Black)
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         TeamLogo(
                             team = match.away,
+                            colors = colors,
                             modifier = Modifier.size(40.dp),
                             fontSize = 18.sp
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(match.away?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(match.away?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
@@ -1215,15 +1254,15 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
 
         ScrollableTabRow(
             selectedTabIndex = selectedTab,
-            containerColor = CardBackground,
-            contentColor = AccentGreen,
+            containerColor = colors.cardBackground,
+            contentColor = colors.accentPrimary,
             edgePadding = 0.dp
         ) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
                     onClick = { selectedTab = index },
-                    text = { Text(title, fontWeight = FontWeight.Bold) }
+                    text = { Text(title, fontWeight = FontWeight.Bold, color = if (selectedTab == index) colors.accentPrimary else colors.textMuted) }
                 )
             }
         }
@@ -1233,15 +1272,17 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
         when (selectedTab) {
             0 -> {
                 if (isLoadingH2H) {
-                    CircularProgressIndicator(color = AccentGreen, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    CircularProgressIndicator(color = colors.accentPrimary, modifier = Modifier.align(Alignment.CenterHorizontally))
                 } else if (h2hMatches.isEmpty()) {
-                    Text("Nincsenek korábbi egymás elleni meccsadatok.", color = TextMuted, fontSize = 14.sp)
+                    Text("Nincsenek korábbi egymás elleni meccsadatok.", color = colors.textMuted, fontSize = 14.sp)
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(h2hMatches) { h2h ->
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = CardBackground),
-                                modifier = Modifier.fillMaxWidth()
+                                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, colors.border, RoundedCornerShape(8.dp))
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -1251,10 +1292,10 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text(h2h.date ?: "", color = TextMuted, fontSize = 11.sp)
-                                        Text("${h2h.team1Name} vs ${h2h.team2Name}", color = TextWhite, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                        Text(h2h.date ?: "", color = colors.textMuted, fontSize = 11.sp)
+                                        Text("${h2h.team1Name} vs ${h2h.team2Name}", color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
                                     }
-                                    Text("${h2h.team1Score} - ${h2h.team2Score}", color = AccentGreen, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("${h2h.team1Score} - ${h2h.team2Score}", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 }
                             }
                         }
@@ -1263,60 +1304,62 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
             }
             1 -> {
                 if (isLoadingInjuries) {
-                    CircularProgressIndicator(color = AccentGreen, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    CircularProgressIndicator(color = colors.accentPrimary, modifier = Modifier.align(Alignment.CenterHorizontally))
                 } else if (injuryMatchData == null) {
-                    Text("Nincs információ sérültekről vagy eltiltottakról ehhez a meccshez.", color = TextMuted, fontSize = 14.sp)
+                    Text("Nincs információ sérültekről vagy eltiltottakról ehhez a meccshez.", color = colors.textMuted, fontSize = 14.sp)
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         item {
-                            TeamInjuriesSection(injuryMatchData?.home?.name ?: "Hazai", injuryMatchData?.home?.sidelined)
+                            TeamInjuriesSection(injuryMatchData?.home?.name ?: "Hazai", injuryMatchData?.home?.sidelined, colors)
                         }
                         item {
-                            TeamInjuriesSection(injuryMatchData?.away?.name ?: "Vendég", injuryMatchData?.away?.sidelined)
+                            TeamInjuriesSection(injuryMatchData?.away?.name ?: "Vendég", injuryMatchData?.away?.sidelined, colors)
                         }
                     }
                 }
             }
             2 -> {
                 if (isLoadingLineup) {
-                    CircularProgressIndicator(color = AccentGreen, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    CircularProgressIndicator(color = colors.accentPrimary, modifier = Modifier.align(Alignment.CenterHorizontally))
                 } else if (lineupData == null) {
-                    Text("Még nem állnak rendelkezésre a kezdőcsapatok.", color = TextMuted, fontSize = 14.sp)
+                    Text("Még nem állnak rendelkezésre a kezdőcsapatok.", color = colors.textMuted, fontSize = 14.sp)
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         item {
-                            LineupSection(lineupData?.home)
+                            LineupSection(lineupData?.home, colors)
                         }
                         item {
-                            LineupSection(lineupData?.away)
+                            LineupSection(lineupData?.away, colors)
                         }
                     }
                 }
             }
             3 -> {
                 if (isLoadingPrediction) {
-                    CircularProgressIndicator(color = AccentGreen, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    CircularProgressIndicator(color = colors.accentPrimary, modifier = Modifier.align(Alignment.CenterHorizontally))
                 } else if (predictionData == null) {
-                    Text("Ehhez a meccshez még nem érhető el AI elemzés.", color = TextMuted, fontSize = 14.sp)
+                    Text("Ehhez a meccshez még nem érhető el AI elemzés.", color = colors.textMuted, fontSize = 14.sp)
                 } else {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = CardBackground),
-                        modifier = Modifier.fillMaxWidth()
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("VÁRHATÓ KIMENETEL", color = AccentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("VÁRHATÓ KIMENETEL", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Text(
                                 text = translateChoice(predictionData?.choice),
-                                color = AccentGreen,
+                                color = colors.accentPrimary,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 18.sp,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("ELEMZÉS & INDOKLÁS", color = TextMuted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("ELEMZÉS & INDOKLÁS", color = colors.textMuted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Text(
                                 text = translateReasoning(predictionData?.reasoning),
-                                color = TextWhite,
+                                color = colors.textPrimary,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
@@ -1325,26 +1368,26 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                 }
             }
             4 -> {
-                Text("A tabella adatok betöltése folyamatban...", color = TextMuted, fontSize = 14.sp)
+                Text("A tabella adatok betöltése folyamatban...", color = colors.textMuted, fontSize = 14.sp)
             }
             5 -> {
-                Text("Oddsok betöltése...", color = TextMuted, fontSize = 14.sp)
+                Text("Oddsok betöltése...", color = colors.textMuted, fontSize = 14.sp)
             }
         }
     }
 }
 
 @Composable
-fun LineupSection(lineup: LineupTeam?) {
+fun LineupSection(lineup: LineupTeam?, colors: AppColors) {
     Column {
         Text(
             text = "${lineup?.teamName?.uppercase() ?: "CSAPAT"} (${lineup?.teamFormation ?: "-"})",
-            color = AccentGreen,
+            color = colors.accentPrimary,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        Text("Edző: ${lineup?.coach?.name ?: "-"}", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+        Text("Edző: ${lineup?.coach?.name ?: "-"}", color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
 
         lineup?.startingXi?.forEach { player ->
             Row(
@@ -1353,41 +1396,42 @@ fun LineupSection(lineup: LineupTeam?) {
                     .padding(vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("${player.number ?: ""}. ${player.name ?: ""}", color = TextWhite, fontSize = 13.sp)
-                Text(translatePosition(player.position).uppercase(), color = TextMuted, fontSize = 11.sp)
+                Text("${player.number ?: ""}. ${player.name ?: ""}", color = colors.textPrimary, fontSize = 13.sp)
+                Text(translatePosition(player.position).uppercase(), color = colors.textMuted, fontSize = 11.sp)
             }
         }
     }
 }
 
 @Composable
-fun TeamInjuriesSection(teamName: String, sidelined: SidelinedData?) {
+fun TeamInjuriesSection(teamName: String, sidelined: SidelinedData?, colors: AppColors) {
     val toMiss = sidelined?.toMiss?.player ?: emptyList()
     val questionable = sidelined?.questionable?.player ?: emptyList()
 
     Column {
-        Text(teamName.uppercase(), color = AccentGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Text(teamName.uppercase(), color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp))
 
         if (toMiss.isEmpty() && questionable.isEmpty()) {
-            Text("Nincs bejelentett hiányzó.", color = TextMuted, fontSize = 12.sp)
+            Text("Nincs bejelentett hiányzó.", color = colors.textMuted, fontSize = 12.sp)
         } else {
             toMiss.forEach { player ->
-                PlayerInjuryRow(player.name ?: "", translateInjuryStatus(player.status), isQuestionable = false)
+                PlayerInjuryRow(player.name ?: "", translateInjuryStatus(player.status), isQuestionable = false, colors = colors)
             }
             questionable.forEach { player ->
-                PlayerInjuryRow(player.name ?: "", translateInjuryStatus(player.status), isQuestionable = true)
+                PlayerInjuryRow(player.name ?: "", translateInjuryStatus(player.status), isQuestionable = true, colors = colors)
             }
         }
     }
 }
 
 @Composable
-fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean) {
+fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean, colors: AppColors) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
+            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
     ) {
         Row(
             modifier = Modifier
@@ -1397,12 +1441,12 @@ fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(name, color = TextWhite, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                Text(status, color = TextMuted, fontSize = 11.sp)
+                Text(name, color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text(status, color = colors.textMuted, fontSize = 11.sp)
             }
             Text(
                 text = if (isQuestionable) "KÉRDÉSES" else "KIMARAD",
-                color = if (isQuestionable) AccentYellow else AccentRed,
+                color = if (isQuestionable) colors.accentYellow else colors.accentRed,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp
             )
@@ -1411,19 +1455,19 @@ fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean) {
 }
 
 @Composable
-fun ApiSettingsScreen(navController: NavController) {
+fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(colors.background)
             .padding(20.dp)
     ) {
         Text(
             text = "← Vissza",
-            color = AccentGreen,
+            color = colors.accentPrimary,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clickable { navController.popBackStack() }
@@ -1432,14 +1476,14 @@ fun ApiSettingsScreen(navController: NavController) {
 
         Text(
             text = "API BEÁLLÍTÁSOK",
-            color = TextWhite,
+            color = colors.textPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
 
         Text(
             text = "Illeszd be a StatPal Starter API kulcsodat az élő adatok lekéréséhez.",
-            color = TextMuted,
+            color = colors.textMuted,
             fontSize = 14.sp,
             modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
         )
@@ -1447,14 +1491,14 @@ fun ApiSettingsScreen(navController: NavController) {
         OutlinedTextField(
             value = apiKeyInput,
             onValueChange = { apiKeyInput = it },
-            label = { Text("StatPal API Key", color = TextMuted) },
+            label = { Text("StatPal API Key", color = colors.textMuted) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentGreen,
-                unfocusedBorderColor = CardBackground,
-                focusedTextColor = TextWhite,
-                unfocusedTextColor = TextWhite
+                focusedBorderColor = colors.accentPrimary,
+                unfocusedBorderColor = colors.border,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary
             ),
             modifier = Modifier.fillMaxWidth()
         )
@@ -1467,11 +1511,11 @@ fun ApiSettingsScreen(navController: NavController) {
                 Toast.makeText(context, "API Kulcs elmentve!", Toast.LENGTH_SHORT).show()
                 navController.popBackStack()
             },
-            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+            colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(text = "Mentés", color = Color.Black, fontWeight = FontWeight.Bold)
+            Text(text = "Mentés", color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 }
