@@ -1588,7 +1588,7 @@ fun TimelineTab(match: StatPalMatch, colors: AppColors) {
             val minute = event.minute ?: ""
             val extraMin = event.extraMin ?: ""
             val minStr = if (extraMin.isNotBlank()) "$minute+$extraMin'" else "$minute'"
-            val playerName = event.playerName ?: event.player ?: "-"
+            val playerName = event.player ?: "-"
             val assist = event.assistPlayer ?: ""
             val result = event.result ?: ""
 
