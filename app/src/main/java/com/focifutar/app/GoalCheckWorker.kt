@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -36,12 +37,11 @@ class GoalCheckWorker(
                     val currentScoreStr = "$homeGoals-$awayGoals"
                     
                     val savedScoreStr = prefs.getString(matchId, null)
-                    // Ha már létezett mentett állás, de az eltér a mostanitól -> GÓL ESETT!
+                    // Ha az eredmény megváltozott az előző ellenőrzés óta -> GÓL!
                     if (savedScoreStr != null && savedScoreStr != currentScoreStr) {
                         val goalText = "⚽ GÓL! ${match.home?.name} $currentScoreStr ${match.away?.name}"
                         sendNotification(context, "Élő Gól Értesítés", goalText)
                     }
-                    // Frissítjük a mentett állást
                     prefs.edit().putString(matchId, currentScoreStr).apply()
                 }
             }
@@ -60,7 +60,10 @@ class GoalCheckWorker(
                 channelId,
                 "Élő Gól Értesítések",
                 NotificationManager.IMPORTANCE_HIGH
-            )
+            ).apply {
+                enableVibration(true)
+                setSound(Settings.System.DEFAULT_NOTIFICATION_URI, null)
+            }
             notificationManager.createNotificationChannel(channel)
         }
 
@@ -69,6 +72,7 @@ class GoalCheckWorker(
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .build()
 
