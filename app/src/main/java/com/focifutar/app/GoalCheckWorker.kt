@@ -26,15 +26,23 @@ class GoalCheckWorker(
         try {
             val response = StatPalClient.service.getDailyMatches(apiKey, 0)
             val leagues = response.liveMatches?.league.orEmpty()
+            val prefs = context.getSharedPreferences("goal_cache_prefs", Context.MODE_PRIVATE)
 
             leagues.flatMap { it.match }.forEach { match ->
                 val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                 if (favoriteIds.contains(matchId) && isLiveMatch(match)) {
                     val homeGoals = match.home?.goals ?: "0"
                     val awayGoals = match.away?.goals ?: "0"
+                    val currentScoreStr = "$homeGoals-$awayGoals"
                     
-                    val goalText = "⚽ GÓL! ${match.home?.name} $homeGoals - $awayGoals ${match.away?.name}"
-                    sendNotification(context, "Élő Gól Értesítés", goalText)
+                    val savedScoreStr = prefs.getString(matchId, null)
+                    // Ha már létezett mentett állás, de az eltér a mostanitól -> GÓL ESETT!
+                    if (savedScoreStr != null && savedScoreStr != currentScoreStr) {
+                        val goalText = "⚽ GÓL! ${match.home?.name} $currentScoreStr ${match.away?.name}"
+                        sendNotification(context, "Élő Gól Értesítés", goalText)
+                    }
+                    // Frissítjük a mentett állást
+                    prefs.edit().putString(matchId, currentScoreStr).apply()
                 }
             }
             Result.success()
