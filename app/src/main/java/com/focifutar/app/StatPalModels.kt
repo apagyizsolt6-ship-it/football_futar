@@ -58,15 +58,40 @@ class LeagueListDeserializer : JsonDeserializer<List<StatPalLeague>> {
 }
 
 // ==========================================
+// RUGALMAS DESZERIALIZÁTOR A DINAMIKUS "matches_DD_MM_YYYY" GYÖKÉRHEZ
+// ==========================================
+class StatPalLiveMatchesResponseDeserializer : JsonDeserializer<StatPalLiveMatchesResponse> {
+    override fun deserialize(
+        json: JsonElement?,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): StatPalLiveMatchesResponse {
+        if (json == null || !json.isJsonObject) return StatPalLiveMatchesResponse(null)
+
+        val obj = json.asJsonObject
+        // Megkeressük azt a kulcsot, ami "matches_" paranccsal kezdődik, vagy fallbackként bármilyen konténert
+        val containerEntry = obj.entrySet().find { it.key.startsWith("matches_") } ?: obj.entrySet().firstOrNull()
+        
+        var container: StatPalLiveMatchesContainer? = null
+        if (containerEntry != null && containerEntry.value.isJsonObject) {
+            container = context?.deserialize(containerEntry.value, StatPalLiveMatchesContainer::class.java)
+        }
+
+        return StatPalLiveMatchesResponse(liveMatches = container)
+    }
+}
+
+// ==========================================
 // FŐ RESPONSE DOKUMENTUM
 // ==========================================
+@JsonAdapter(StatPalLiveMatchesResponseDeserializer::class)
 data class StatPalLiveMatchesResponse(
-    @SerializedName("live_matches") val liveMatches: StatPalLiveMatchesContainer? = null,
-    @SerializedName("response") val response: StatPalLiveMatchesContainer? = null
+    val liveMatches: StatPalLiveMatchesContainer? = null
 )
 
 data class StatPalLiveMatchesContainer(
     val updated: String? = null,
+    @SerializedName("updated_ts") val updatedTs: Long? = null,
     @JsonAdapter(LeagueListDeserializer::class)
     @SerializedName("league") val league: List<StatPalLeague>? = emptyList()
 )
