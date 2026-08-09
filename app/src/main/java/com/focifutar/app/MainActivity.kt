@@ -1,10 +1,12 @@
 package com.focifutar.app
 
+import android.Manifest
 import android.app.DatePickerDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -37,7 +39,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -610,6 +614,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Értesítési engedély kérése futásidőben (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+        
         // Előtér-szolgáltatás elindítása, hogy a háttérben is folyamatosan fusson és figyeljen
         val serviceIntent = Intent(this, MatchLiveService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -735,7 +746,6 @@ fun MatchesListScreen(
     var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     var processedEventsMap by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     
-    // Villogó meccsek és színeik tárolója (MatchId -> FlashColor)
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
@@ -783,7 +793,6 @@ fun MatchesListScreen(
                     val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
 
                     if (isFav) {
-                        // Gól detektálás + 15 másodperces ZÖLD villogtatás
                         if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
                             val oldScore = previousScoresMap[id]
                             if (oldScore != null && oldScore != scoreStr) {
@@ -798,19 +807,16 @@ fun MatchesListScreen(
                             }
                         }
 
-                        // Félidő detektálás
                         if (isHtNow && !newlyHt.contains(id)) {
                             newlyHt.add(id)
                             sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
-                        // Meccs vége detektálás
                         if (isFinishedNow && !newlyFinished.contains(id)) {
                             newlyFinished.add(id)
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
-                        // Lapok (Sárga / Piros) ellenőrzése előtéren -> SÁRGA vagy PIROS villogás 15 mp-ig
                         val events = m.events?.event.orEmpty()
                         val currentMatchEvents = newProcessedEvents[id] ?: emptySet()
                         val updatedMatchEvents = currentMatchEvents.toMutableSet()
