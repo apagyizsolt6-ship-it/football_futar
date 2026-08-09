@@ -478,7 +478,6 @@ fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
         }
         val parsedDate = utcFormat.parse("$datePart $timeStr")
         val localFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
-            timeZone = Locale.getDefault()
             timeZone = TimeZone.getDefault()
         }
         if (parsedDate != null) localFormat.format(parsedDate) else translatedTime
@@ -725,7 +724,6 @@ fun MatchesListScreen(
                     fontWeight = FontWeight.Black
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                // Bankroll egyenleg kijelzés
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
