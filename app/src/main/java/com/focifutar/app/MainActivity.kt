@@ -749,10 +749,15 @@ fun MatchesListScreen(
         }
     }
 
+    // AUTOMATIKUS 15 MÁSODPERCES ÉLŐ FRISSÍTÉS CIKLUS (GÓLFIGYELÉSHEZ)[span_1](start_span)[span_1](end_span)
     LaunchedEffect(selectedCalendar) {
-        isLoading = true
-        delay(300L)
         fetchMatches()
+        while (true) {
+            delay(15000L)
+            if (calculateDayOffset(selectedCalendar) == 0) {
+                fetchMatches(forceRefresh = true)
+            }
+        }
     }
 
     val totalLiveCount = remember(leagues) {
@@ -965,11 +970,11 @@ fun MatchesListScreen(
             colors = colors
         )
 
-        if (isLoading) {
+        if (isLoading && leagues.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = colors.accentPrimary)
             }
-        } else if (errorMessage != null) {
+        } else if (errorMessage != null && leagues.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
