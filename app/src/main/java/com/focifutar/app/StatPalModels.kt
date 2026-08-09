@@ -1,56 +1,138 @@
 package com.focifutar.app
 
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
+import java.lang.reflect.Type
 
 // ==========================================
-// ÉLŐ ÉS KÖZELGŐ MECCSEK
+// RUGALMAS GSON KONVERTER A "MATCH" MEZŐHÖZ
+// ==========================================
+class MatchListDeserializer : JsonDeserializer<List<StatPalMatch>> {
+    override fun deserialize(
+        json: JsonElement?,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): List<StatPalMatch> {
+        if (json == null || json.isJsonNull) return emptyList()
+
+        val list = mutableListOf<StatPalMatch>()
+        if (json.isJsonArray) {
+            for (element in json.asJsonArray) {
+                val m = context?.deserialize<StatPalMatch>(element, StatPalMatch::class.java)
+                if (m != null) list.add(m)
+            }
+        } else if (json.isJsonObject) {
+            val m = context?.deserialize<StatPalMatch>(json.asJsonObject, StatPalMatch::class.java)
+            if (m != null) list.add(m)
+        }
+        return list
+    }
+}
+
+// ==========================================
+// RUGALMAS GSON KONVERTER A "LEAGUE" MEZŐHÖZ
+// ==========================================
+class LeagueListDeserializer : JsonDeserializer<List<StatPalLeague>> {
+    override fun deserialize(
+        json: JsonElement?,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): List<StatPalLeague> {
+        if (json == null || json.isJsonNull) return emptyList()
+
+        val list = mutableListOf<StatPalLeague>()
+        if (json.isJsonArray) {
+            for (element in json.asJsonArray) {
+                val l = context?.deserialize<StatPalLeague>(element, StatPalLeague::class.java)
+                if (l != null) list.add(l)
+            }
+        } else if (json.isJsonObject) {
+            val l = context?.deserialize<StatPalLeague>(json.asJsonObject, StatPalLeague::class.java)
+            if (l != null) list.add(l)
+        }
+        return list
+    }
+}
+
+// ==========================================
+// FŐ RESPONSE DOKUMENTUM
 // ==========================================
 data class StatPalLiveMatchesResponse(
-    @SerializedName("live_matches") val liveMatches: LiveMatchesContainer? = null
+    @SerializedName("live_matches") val liveMatches: StatPalLiveMatchesContainer? = null,
+    @SerializedName("response") val response: StatPalLiveMatchesContainer? = null
 )
 
-data class LiveMatchesContainer(
-    val league: List<StatPalLeague>? = null
+data class StatPalLiveMatchesContainer(
+    val updated: String? = null,
+    @SerializedName("league") val league: List<StatPalLeague>? = emptyList()
 )
 
 data class StatPalLeague(
     val id: String? = null,
     val name: String? = null,
     val country: String? = null,
-    val match: List<StatPalMatch> = emptyList()
+    val cup: String? = null,
+    @SerializedName("match") val match: List<StatPalMatch> = emptyList()
 )
 
 data class StatPalMatch(
     @SerializedName("main_id") val mainId: String? = null,
-    val id: String? = null,
+    val status: String? = null,
     val date: String? = null,
     val time: String? = null,
-    val status: String? = null,
+    val venue: String? = null,
     val home: StatPalTeam? = null,
-    val away: StatPalTeam? = null
+    val away: StatPalTeam? = null,
+    val ht: StatPalScore? = null,
+    val ft: StatPalScore? = null,
+    val et: StatPalScore? = null,
+    val penalties: StatPalPenaltyData? = null,
+    @SerializedName("has_live_stats") val hasLiveStats: String? = null,
+    @SerializedName("inplay_odds_running") val inplayOddsRunning: String? = null,
+    @SerializedName("match_context") val matchContext: StatPalContext? = null
 )
 
 data class StatPalTeam(
     val id: String? = null,
     val name: String? = null,
+    val goals: String? = null,
     val logo: String? = null,
     val image: String? = null,
-    val goals: String? = null
+    @SerializedName("win_on_agg") val winOnAgg: String? = null
+)
+
+data class StatPalScore(
+    @SerializedName("home_goals") val homeGoals: Any? = null,
+    @SerializedName("away_goals") val awayGoals: Any? = null
+)
+
+data class StatPalPenaltyData(
+    @SerializedName("home_pen") val homePen: Any? = null,
+    @SerializedName("away_pen") val awayPen: Any? = null
+)
+
+data class StatPalContext(
+    @SerializedName("live_storylines") val liveStorylines: Boolean? = false,
+    @SerializedName("weather_forecast") val weatherForecast: Boolean? = false,
+    @SerializedName("team_lineups") val teamLineups: Boolean? = false,
+    val predictions: Boolean? = false
 )
 
 // ==========================================
-// H2H (EGYMÁS ELLENI MÉRLEGEK)
+// H2H (EGYMÁS ELLENI)
 // ==========================================
 data class H2HResponse(
-    @SerializedName("head_to_head") val headToHead: HeadToHeadContainer? = null
+    @SerializedName("head_to_head") val headToHead: H2HData? = null
 )
 
-data class HeadToHeadContainer(
-    @SerializedName("recent_meetings") val recentMeetings: RecentMeetings? = null
+data class H2HData(
+    @SerializedName("recent_meetings") val recentMeetings: H2HMeetings? = null
 )
 
-data class RecentMeetings(
-    val match: List<H2HMatch>? = null
+data class H2HMeetings(
+    val match: List<H2HMatch>? = emptyList()
 )
 
 data class H2HMatch(
@@ -62,18 +144,18 @@ data class H2HMatch(
 )
 
 // ==========================================
-// SÉRÜLTEK ÉS ELTILTOOTTAK
+// HIÁNYZÓK / SÉRÜLTEK
 // ==========================================
 data class InjuriesResponse(
-    @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuriesContainer? = null
+    @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuryLeagueContainer? = null
 )
 
-data class InjuriesContainer(
-    val league: List<InjuryLeague>? = null
+data class InjuryLeagueContainer(
+    val league: List<InjuryLeague>? = emptyList()
 )
 
 data class InjuryLeague(
-    val match: List<InjuryMatch>? = null
+    val match: List<InjuryMatch>? = emptyList()
 )
 
 data class InjuryMatch(
@@ -88,21 +170,21 @@ data class InjuryTeam(
 )
 
 data class SidelinedData(
-    @SerializedName("to_miss") val toMiss: SidelinedGroup? = null,
-    val questionable: SidelinedGroup? = null
+    @SerializedName("to_miss") val toMiss: PlayerListContainer? = null,
+    val questionable: PlayerListContainer? = null
 )
 
-data class SidelinedGroup(
-    val player: List<PlayerItem>? = null
+data class PlayerListContainer(
+    val player: List<InjuryPlayer>? = emptyList()
 )
 
-data class PlayerItem(
+data class InjuryPlayer(
     val name: String? = null,
     val status: String? = null
 )
 
 // ==========================================
-// KEZDŐCSAPATOK
+// KEZDŐCSAPATOK (LINEUP)
 // ==========================================
 data class StatPalLineupResponse(
     val home: LineupTeam? = null,
@@ -112,20 +194,22 @@ data class StatPalLineupResponse(
 data class LineupTeam(
     @SerializedName("team_name") val teamName: String? = null,
     @SerializedName("team_formation") val teamFormation: String? = null,
-    val coach: Coach? = null,
-    @SerializedName("starting_xi") val startingXi: List<StartingPlayer>? = null
+    val coach: CoachData? = null,
+    @SerializedName("starting_xi") val startingXi: List<LineupPlayer>? = emptyList()
 )
 
-data class Coach(val name: String? = null)
+data class CoachData(
+    val name: String? = null
+)
 
-data class StartingPlayer(
-    val number: String? = null,
+data class LineupPlayer(
     val name: String? = null,
+    val number: String? = null,
     val position: String? = null
 )
 
 // ==========================================
-// AI MECCS TIPP ÉS ELEMZÉS
+// PREDICTION (AI ELEMZÉS)
 // ==========================================
 data class PredictionResponse(
     val prediction: PredictionData? = null
@@ -137,49 +221,38 @@ data class PredictionData(
 )
 
 // ==========================================
-// PRE-MATCH ODDS
+// PREMATCH ODDS
 // ==========================================
 data class StatPalPrematchOddsResponse(
     @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer? = null
 )
 
 data class PrematchOddsContainer(
-    val updated: String? = null,
-    @SerializedName("updated_ts") val updatedTs: Long? = null,
     val league: PrematchOddsLeague? = null
 )
 
 data class PrematchOddsLeague(
-    val id: String? = null,
-    val name: String? = null,
-    val country: String? = null,
-    val match: List<PrematchOddsMatch>? = null
+    val match: List<PrematchOddsMatch>? = emptyList()
 )
 
 data class PrematchOddsMatch(
     @SerializedName("main_id") val mainId: String? = null,
-    val date: String? = null,
-    val time: String? = null,
     val home: StatPalTeam? = null,
     val away: StatPalTeam? = null,
-    val odds: List<PrematchOddsCategory>? = null
+    val odds: List<OddsCategory>? = emptyList()
 )
 
-data class PrematchOddsCategory(
-    val id: String? = null,
+data class OddsCategory(
     val name: String? = null,
-    val stop: String? = null,
-    val bookmaker: List<PrematchBookmaker>? = null
+    val bookmaker: List<BookmakerData>? = emptyList()
 )
 
-data class PrematchBookmaker(
-    val id: String? = null,
+data class BookmakerData(
     val name: String? = null,
-    val timestamp: String? = null,
-    val odd: List<PrematchOddValue>? = null
+    val odd: List<OddValue>? = emptyList()
 )
 
-data class PrematchOddValue(
+data class OddValue(
     val name: String? = null,
     val value: String? = null
 )
