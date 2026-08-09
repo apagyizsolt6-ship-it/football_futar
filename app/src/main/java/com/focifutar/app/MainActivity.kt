@@ -385,7 +385,7 @@ fun translateLeagueName(leagueName: String?): String {
         "BOSNIA AND HERZEGOVINA" to "🇧🇦 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
         "BURUNDI" to "🇧🇮 BURUNDI", "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA",
         "COLOMBIA" to "🇨🇴 KOLUMBIA", "COSTA RICA" to "🇨🇷 COSTA RICA", "CROATIA" to "🇭🇷 HORVÁTORSZÁG",
-        "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨🇿 CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
+        "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨ZE CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
         "ECUADOR" to "🇪🇨 ECUADOR", "EGYPT" to "🇪🇬 EGYIPTOM", "EL SALVADOR" to "🇸🇻 EL SALVADOR",
         "ENGLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 ANGLIA", "ESTONIA" to "🇪🇪 ÉSZTORSZÁG", "EUROPE" to "🇪🇺 EURÓPA",
         "FAROE ISLANDS" to "🇫🇴 FERÖER", "FIJI" to "🇫🇯 FIJI", "FINLAND" to "🇫🇮 FINNORSZÁG",
@@ -709,13 +709,33 @@ fun MatchesListScreen(
         errorMessage = null
         coroutineScope.launch {
             try {
-                val response = try {
-                    StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
-                } catch (e: Exception) {
+                val response = if (isToday(selectedCalendar)) {
                     try {
                         StatPalClient.service.getLiveMatches(apiKey)
                     } catch (_: Exception) {
-                        throw e
+                        try {
+                            StatPalClient.service.getFixtures(apiKey, dateParam)
+                        } catch (_: Exception) {
+                            try {
+                                StatPalClient.service.getMatches(apiKey, dateParam)
+                            } catch (_: Exception) {
+                                StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                            }
+                        }
+                    }
+                } else {
+                    try {
+                        StatPalClient.service.getFixtures(apiKey, dateParam)
+                    } catch (_: Exception) {
+                        try {
+                            StatPalClient.service.getMatches(apiKey, dateParam)
+                        } catch (_: Exception) {
+                            try {
+                                StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                            } catch (_: Exception) {
+                                StatPalClient.service.getLiveMatches(apiKey)
+                            }
+                        }
                     }
                 }
 
@@ -754,7 +774,12 @@ fun MatchesListScreen(
                     errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
                 }
             } catch (e: Exception) {
-                errorMessage = "Hiba a kapcsolódáskor: ${e.localizedMessage}"
+                val errMsg = e.localizedMessage ?: ""
+                if (errMsg.contains("404")) {
+                    errorMessage = "Hiba a kapcsolódáskor: HTTP 404 Not Found.\n(Ellenőrizd a StatPal API kulcsodat a ⚙️ Beállításokban!)"
+                } else {
+                    errorMessage = "Hiba a kapcsolódáskor: $errMsg"
+                }
             } finally {
                 isLoading = false
             }
