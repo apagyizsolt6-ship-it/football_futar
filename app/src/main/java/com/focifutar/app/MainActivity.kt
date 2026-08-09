@@ -574,7 +574,6 @@ fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
     }
 }
 
-// Segédfüggvény a szinkronizált hangos értesítéshez előtérben is
 fun sendSystemNotification(context: Context, title: String, message: String) {
     val channelId = "football_futar_goals"
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -724,6 +723,8 @@ fun MatchesListScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var processedEventsMap by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     
     // Villogó meccsek ID tárolója
     var flashingMatchIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -759,6 +760,8 @@ fun MatchesListScreen(
 
                 val newScoresMap = mutableMapOf<String, String>()
                 val newlyFinished = finishedMatchesMap.toMutableSet()
+                val newlyHt = halftimeMatchesMap.toMutableSet()
+                val newProcessedEvents = processedEventsMap.toMutableMap()
 
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
@@ -768,33 +771,61 @@ fun MatchesListScreen(
                     val isFav = favoriteIds.contains(id)
                     val rawStatus = (m.status ?: m.time ?: "").uppercase()
                     val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
+                    val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
 
                     if (isFav) {
-                        // Gól detektálás + Villogás aktiválása
+                        // Gól detektálás + 15 másodperces villogtatás
                         if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
                             val oldScore = previousScoresMap[id]
                             if (oldScore != null && oldScore != scoreStr) {
                                 Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
                                 sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
                                 
-                                // Villogtatás indítása
                                 coroutineScope.launch {
                                     flashingMatchIds = flashingMatchIds + id
-                                    delay(3000L) // 3 másodpercig villog
+                                    delay(15000L) // 15 másodpercig villog
                                     flashingMatchIds = flashingMatchIds - id
                                 }
                             }
                         }
 
-                        // Meccs vége detektálás előtéren
+                        // Félidő detektálás
+                        if (isHtNow && !newlyHt.contains(id)) {
+                            newlyHt.add(id)
+                            sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
+                        }
+
+                        // Meccs vége detektálás
                         if (isFinishedNow && !newlyFinished.contains(id)) {
                             newlyFinished.add(id)
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
+
+                        // Lapok (Sárga / Piros) ellenőrzése előtéren
+                        val events = m.events?.event.orEmpty()
+                        val currentMatchEvents = newProcessedEvents[id] ?: emptySet()
+                        val updatedMatchEvents = currentMatchEvents.toMutableSet()
+
+                        events.forEach { event ->
+                            val type = event.type?.lowercase() ?: ""
+                            if (type.contains("yellow") || type.contains("red")) {
+                                val eventKey = "${event.minute}_${event.player}_${event.type}"
+                                if (!updatedMatchEvents.contains(eventKey)) {
+                                    updatedMatchEvents.add(eventKey)
+                                    val cardIcon = if (type.contains("red")) "🟥" else "🟨"
+                                    val cardName = if (type.contains("red")) "Piros lap" else "Sárga lap"
+                                    val cardText = "$cardIcon $cardName (${event.minute}'): ${event.player} (${m.home?.name} - ${m.away?.name})"
+                                    sendSystemNotification(context, "⚠️ Lap esemény", cardText)
+                                }
+                            }
+                        }
+                        newProcessedEvents[id] = updatedMatchEvents
                     }
                 }
                 previousScoresMap = newScoresMap
                 finishedMatchesMap = newlyFinished
+                halftimeMatchesMap = newlyHt
+                processedEventsMap = newProcessedEvents
 
                 leagues = validLeagues
                 if (validLeagues.isNotEmpty()) {
@@ -1467,7 +1498,7 @@ fun MatchRow(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
-    // Villogó háttérszín animáció gól esetén
+    // Villogó háttérszín animáció gól esetén (15 másodpercig aktív)
     val infiniteTransition = rememberInfiniteTransition(label = "flash")
     val flashAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
