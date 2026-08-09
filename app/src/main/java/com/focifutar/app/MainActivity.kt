@@ -139,6 +139,28 @@ fun toggleFavoriteLeague(context: Context, leagueKey: String) {
 }
 
 // ==========================================
+// TARTÓS ESEMÉNY- ÉS ÉRTESÍTÉS KEZELÉS (DUPLIKÁCIÓ SZŰRÉS)
+// ==========================================
+fun isEventAlreadyProcessed(context: Context, eventKey: String): Boolean {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val processed = prefs.getStringSet("processed_events_set", emptySet()) ?: emptySet()
+    return processed.contains(eventKey)
+}
+
+fun markEventAsProcessed(context: Context, eventKey: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val current = prefs.getStringSet("processed_events_set", emptySet())?.toMutableSet() ?: mutableSetOf()
+    if (current.add(eventKey)) {
+        if (current.size > 1500) {
+            val trimmed = current.drop(current.size - 1000).toSet()
+            prefs.edit().putStringSet("processed_events_set", trimmed).apply()
+        } else {
+            prefs.edit().putStringSet("processed_events_set", current).apply()
+        }
+    }
+}
+
+// ==========================================
 // BANKROLL & VIRTUÁLIS EGYENLEG KEZELÉS
 // ==========================================
 fun getVirtualBalance(context: Context): Double {
@@ -744,7 +766,6 @@ fun MatchesListScreen(
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var processedEventsMap by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
@@ -780,7 +801,6 @@ fun MatchesListScreen(
                 val newScoresMap = mutableMapOf<String, String>()
                 val newlyFinished = finishedMatchesMap.toMutableSet()
                 val newlyHt = halftimeMatchesMap.toMutableSet()
-                val newProcessedEvents = processedEventsMap.toMutableMap()
 
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
@@ -796,37 +816,42 @@ fun MatchesListScreen(
                         if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
                             val oldScore = previousScoresMap[id]
                             if (oldScore != null && oldScore != scoreStr) {
-                                Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
-                                sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
-                                
-                                coroutineScope.launch {
-                                    flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
-                                    delay(15000L)
-                                    flashingMatchesState = flashingMatchesState - id
+                                val goalEventKey = "goal_${id}_${scoreStr}"
+                                if (!isEventAlreadyProcessed(context, goalEventKey)) {
+                                    markEventAsProcessed(context, goalEventKey)
+                                    Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
+                                    sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
+                                    
+                                    coroutineScope.launch {
+                                        flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
+                                        delay(15000L)
+                                        flashingMatchesState = flashingMatchesState - id
+                                    }
                                 }
                             }
                         }
 
-                        if (isHtNow && !newlyHt.contains(id)) {
+                        val htEventKey = "ht_${id}"
+                        if (isHtNow && !newlyHt.contains(id) && !isEventAlreadyProcessed(context, htEventKey)) {
+                            markEventAsProcessed(context, htEventKey)
                             newlyHt.add(id)
                             sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
-                        if (isFinishedNow && !newlyFinished.contains(id)) {
+                        val ftEventKey = "ft_${id}"
+                        if (isFinishedNow && !newlyFinished.contains(id) && !isEventAlreadyProcessed(context, ftEventKey)) {
+                            markEventAsProcessed(context, ftEventKey)
                             newlyFinished.add(id)
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
                         val events = m.events?.event.orEmpty()
-                        val currentMatchEvents = newProcessedEvents[id] ?: emptySet()
-                        val updatedMatchEvents = currentMatchEvents.toMutableSet()
-
                         events.forEach { event ->
                             val type = event.type?.lowercase() ?: ""
                             if (type.contains("yellow") || type.contains("red")) {
-                                val eventKey = "${event.minute}_${event.player}_${event.type}"
-                                if (!updatedMatchEvents.contains(eventKey)) {
-                                    updatedMatchEvents.add(eventKey)
+                                val eventKey = "card_${id}_${event.minute}_${event.player}_${event.type}"
+                                if (!isEventAlreadyProcessed(context, eventKey)) {
+                                    markEventAsProcessed(context, eventKey)
                                     val isRed = type.contains("red")
                                     val cardIcon = if (isRed) "🟥" else "🟨"
                                     val cardName = if (isRed) "Piros lap" else "Sárga lap"
@@ -842,13 +867,11 @@ fun MatchesListScreen(
                                 }
                             }
                         }
-                        newProcessedEvents[id] = updatedMatchEvents
                     }
                 }
                 previousScoresMap = newScoresMap
                 finishedMatchesMap = newlyFinished
                 halftimeMatchesMap = newlyHt
-                processedEventsMap = newProcessedEvents
 
                 leagues = validLeagues
                 if (validLeagues.isNotEmpty()) {
@@ -1520,7 +1543,6 @@ fun MatchRow(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
-    // Lapok kiszámolása tiszta nevek alapján (elkerülve a nem létező teamId hivatkozást)
     val events = match.events?.event.orEmpty()
     val homeName = match.home?.name.orEmpty()
     val awayName = match.away?.name.orEmpty()
@@ -1718,7 +1740,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
