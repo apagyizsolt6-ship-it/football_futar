@@ -31,18 +31,32 @@ class GoalCheckWorker(
 
             leagues.flatMap { it.match }.forEach { match ->
                 val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
-                if (favoriteIds.contains(matchId) && isLiveMatch(match)) {
+                if (favoriteIds.contains(matchId)) {
                     val homeGoals = match.home?.goals ?: "0"
                     val awayGoals = match.away?.goals ?: "0"
                     val currentScoreStr = "$homeGoals-$awayGoals"
-                    
-                    val savedScoreStr = prefs.getString(matchId, null)
-                    // Ha az eredmény megváltozott az előző ellenőrzés óta -> GÓL!
-                    if (savedScoreStr != null && savedScoreStr != currentScoreStr) {
-                        val goalText = "⚽ GÓL! ${match.home?.name} $currentScoreStr ${match.away?.name}"
-                        sendNotification(context, "Élő Gól Értesítés", goalText)
+                    val rawStatus = (match.status ?: match.time ?: "").uppercase()
+
+                    val savedScoreStr = prefs.getString("${matchId}_score", null)
+                    val wasFinished = prefs.getBoolean("${matchId}_finished", false)
+
+                    // 1. Gól ellenőrzés
+                    if (isLiveMatch(match)) {
+                        if (savedScoreStr != null && savedScoreStr != currentScoreStr) {
+                            val goalText = "⚽ GÓL! ${match.home?.name} $currentScoreStr ${match.away?.name}"
+                            sendNotification(context, "⚽ Élő Gól Értesítés", goalText)
+                        }
                     }
-                    prefs.edit().putString(matchId, currentScoreStr).apply()
+
+                    // 2. Meccs vége ellenőrzés
+                    val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
+                    if (isFinishedNow && !wasFinished) {
+                        val endText = "🏁 VÉGE A MECCSNEK! ${match.home?.name} $currentScoreStr ${match.away?.name}"
+                        sendNotification(context, "🏁 Mérkőzés Vége", endText)
+                        prefs.edit().putBoolean("${matchId}_finished", true).apply()
+                    }
+
+                    prefs.edit().putString("${matchId}_score", currentScoreStr).apply()
                 }
             }
             Result.success()
@@ -58,7 +72,7 @@ class GoalCheckWorker(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Élő Gól Értesítések",
+                "Élő Gól & Meccs Értesítések",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 enableVibration(true)
