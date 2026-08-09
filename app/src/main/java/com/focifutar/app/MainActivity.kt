@@ -81,13 +81,11 @@ fun getTeamLogoUrl(team: StatPalTeam?, apiKey: String): String? {
     if (team == null) return null
     val teamId = team.id?.trim()
 
-    // Ha van érvényes csapat azonosító és API kulcs, a hivatalos StatPal Image endpointot használjuk
     if (!teamId.isNullOrBlank() && apiKey.isNotBlank()) {
         return "https://statpal.io/api/v2/soccer/images?type=team&id=$teamId&access_key=$apiKey"
     }
 
-    // Tartalék opció, ha az API-ból közvetlen link érkezne
-    val raw = team.logo ?: team.image ?: team.badge ?: team.logoPath ?: return null
+    val raw = team.logo ?: team.image ?: return null
     val url = raw.trim()
     if (url.isBlank()) return null
 
