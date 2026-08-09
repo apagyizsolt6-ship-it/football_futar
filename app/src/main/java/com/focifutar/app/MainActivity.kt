@@ -1,12 +1,17 @@
 package com.focifutar.app
 
 import android.app.DatePickerDialog
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -98,7 +104,7 @@ data class SavedBet(
     val totalOdds: Double,
     val potentialWin: Double,
     val dateStr: String,
-    val status: String // "FÜGGŐBEN" / "NYERT" / "VESZTETT"
+    val status: String
 )
 
 fun isDarkModeSaved(context: Context): Boolean {
@@ -568,6 +574,35 @@ fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
     }
 }
 
+// Segédfüggvény a szinkronizált hangos értesítéshez előtérben is
+fun sendSystemNotification(context: Context, title: String, message: String) {
+    val channelId = "football_futar_goals"
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel(
+            channelId,
+            "Élő Gól & Meccs Értesítések",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            enableVibration(true)
+            setSound(Settings.System.DEFAULT_NOTIFICATION_URI, null)
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    val notification = NotificationCompat.Builder(context, channelId)
+        .setSmallIcon(android.R.drawable.ic_menu_compass)
+        .setContentTitle(title)
+        .setContentText(message)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setDefaults(NotificationCompat.DEFAULT_ALL)
+        .setAutoCancel(true)
+        .build()
+
+    notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+}
+
 var selectedMatchGlobal: StatPalMatch? = null
 var selectedLeagueIdGlobal: String? = null
 
@@ -688,6 +723,10 @@ fun MatchesListScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
+    
+    // Villogó meccsek ID tárolója
+    var flashingMatchIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
@@ -719,20 +758,43 @@ fun MatchesListScreen(
                 val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                 val newScoresMap = mutableMapOf<String, String>()
+                val newlyFinished = finishedMatchesMap.toMutableSet()
+
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
                     val scoreStr = "${m.home?.goals ?: "0"}-${m.away?.goals ?: "0"}"
                     newScoresMap[id] = scoreStr
 
                     val isFav = favoriteIds.contains(id)
-                    if (isFav && previousScoresMap.containsKey(id) && isLiveMatch(m)) {
-                        val oldScore = previousScoresMap[id]
-                        if (oldScore != null && oldScore != scoreStr) {
-                            Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
+                    val rawStatus = (m.status ?: m.time ?: "").uppercase()
+                    val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
+
+                    if (isFav) {
+                        // Gól detektálás + Villogás aktiválása
+                        if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
+                            val oldScore = previousScoresMap[id]
+                            if (oldScore != null && oldScore != scoreStr) {
+                                Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
+                                sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
+                                
+                                // Villogtatás indítása
+                                coroutineScope.launch {
+                                    flashingMatchIds = flashingMatchIds + id
+                                    delay(3000L) // 3 másodpercig villog
+                                    flashingMatchIds = flashingMatchIds - id
+                                }
+                            }
+                        }
+
+                        // Meccs vége detektálás előtéren
+                        if (isFinishedNow && !newlyFinished.contains(id)) {
+                            newlyFinished.add(id)
+                            sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
                     }
                 }
                 previousScoresMap = newScoresMap
+                finishedMatchesMap = newlyFinished
 
                 leagues = validLeagues
                 if (validLeagues.isNotEmpty()) {
@@ -749,7 +811,7 @@ fun MatchesListScreen(
         }
     }
 
-    // AUTOMATIKUS 15 MÁSODPERCES ÉLŐ FRISSÍTÉS CIKLUS (GÓLFIGYELÉSHEZ)[span_1](start_span)[span_1](end_span)
+    // AUTOMATIKUS 15 MÁSODPERCES ÉLŐ FRISSÍTÉS CIKLUS
     LaunchedEffect(selectedCalendar) {
         fetchMatches()
         while (true) {
@@ -1016,9 +1078,11 @@ fun MatchesListScreen(
                     }
                     items(favoriteMatchesList) { (match, leagueId) ->
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+                        val isFlashing = flashingMatchIds.contains(matchId)
                         MatchRow(
                             match,
                             true,
+                            isFlashing,
                             colors,
                             {
                                 toggleFavoriteMatch(context, matchId)
@@ -1062,10 +1126,12 @@ fun MatchesListScreen(
                         items(league.match) { match ->
                             val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                             val isFav = favoriteIds.contains(matchId)
+                            val isFlashing = flashingMatchIds.contains(matchId)
 
                             MatchRow(
                                 match,
                                 isFav,
+                                isFlashing,
                                 colors,
                                 {
                                     toggleFavoriteMatch(context, matchId)
@@ -1388,6 +1454,7 @@ fun LeagueHeader(
 fun MatchRow(
     match: StatPalMatch,
     isFavorite: Boolean,
+    isFlashing: Boolean,
     colors: AppColors,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit
@@ -1400,15 +1467,30 @@ fun MatchRow(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
+    // Villogó háttérszín animáció gól esetén
+    val infiniteTransition = rememberInfiniteTransition(label = "flash")
+    val flashAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 300, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "flashAlpha"
+    )
+
+    val borderColor = if (isFlashing) colors.accentPrimary.copy(alpha = flashAlpha) else if (live) colors.accentRed.copy(alpha = 0.8f) else colors.border
+    val cardBg = if (isFlashing) colors.accentPrimary.copy(alpha = 0.15f) else colors.background
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = colors.background),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .border(
-                width = 1.dp,
-                color = if (live) colors.accentRed.copy(alpha = 0.8f) else colors.border,
+                width = if (isFlashing) 2.dp else 1.dp,
+                color = borderColor,
                 shape = RoundedCornerShape(8.dp)
             )
     ) {
