@@ -115,6 +115,19 @@ fun toggleFavoriteLeague(context: Context, leagueKey: String) {
 }
 
 // ==========================================
+// BANKROLL & VIRTUÁLIS EGYENLEG KEZELÉS
+// ==========================================
+fun getVirtualBalance(context: Context): Double {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getFloat("virtual_balance", 50000f).toDouble()
+}
+
+fun updateVirtualBalance(context: Context, newBalance: Double) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    prefs.edit().putFloat("virtual_balance", newBalance.toFloat()).apply()
+}
+
+// ==========================================
 // API TÁROLÓ (CACHE MANAGER)
 // ==========================================
 object ApiCacheManager {
@@ -465,6 +478,7 @@ fun formatToLocalTime(dateStr: String?, timeStr: String?): String {
         }
         val parsedDate = utcFormat.parse("$datePart $timeStr")
         val localFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+            timeZone = Locale.getDefault()
             timeZone = TimeZone.getDefault()
         }
         if (parsedDate != null) localFormat.format(parsedDate) else translatedTime
@@ -532,7 +546,17 @@ class MainActivity : ComponentActivity() {
                             BetSlipBar(
                                 items = betSlipItems,
                                 colors = colors,
-                                onClear = { betSlipItems = emptyList() }
+                                onClear = { betSlipItems = emptyList() },
+                                onSaveBet = { stake ->
+                                    val currentBal = getVirtualBalance(context)
+                                    if (currentBal >= stake) {
+                                        updateVirtualBalance(context, currentBal - stake)
+                                        Toast.makeText(context, "Szelvény elmentve! Tét: ${stake.toInt()} Ft", Toast.LENGTH_SHORT).show()
+                                        betSlipItems = emptyList()
+                                    } else {
+                                        Toast.makeText(context, "Nincs elég virtuális egyenleged!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             )
                         }
                     }
@@ -559,6 +583,7 @@ fun MatchesListScreen(
     var searchQuery by remember { mutableStateOf("") }
     var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
     var favoriteLeagueKeys by remember { mutableStateOf(getFavoriteLeagueIds(context)) }
+    var virtualBalance by remember { mutableStateOf(getVirtualBalance(context)) }
 
     var leagues by remember { mutableStateOf<List<StatPalLeague>>(emptyList()) }
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -692,12 +717,30 @@ fun MatchesListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "FOOTBALL FUTÁR",
-                color = colors.accentPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Black
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "FOOTBALL FUTÁR",
+                    color = colors.accentPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                // Bankroll egyenleg kijelzés
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.cardBackground)
+                        .border(1.dp, colors.accentYellow.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "💰 ${virtualBalance.toInt()} Ft",
+                        color = colors.accentYellow,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Box(
@@ -1791,7 +1834,8 @@ fun OddsBox(
 fun BetSlipBar(
     items: List<BetSlipItem>,
     colors: AppColors,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    onSaveBet: (Double) -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var stakeInput by remember { mutableStateOf("1000") }
@@ -1892,6 +1936,17 @@ fun BetSlipBar(
                                 fontWeight = FontWeight.Black,
                                 fontSize = 15.sp
                             )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Button(
+                            onClick = { onSaveBet(stake) },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Fogadás elmentése (Virtuális tét)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }
