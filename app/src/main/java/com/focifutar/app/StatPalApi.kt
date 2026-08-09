@@ -12,6 +12,18 @@ interface StatPalService {
         @Query("access_key") apiKey: String
     ): StatPalLiveMatchesResponse
 
+    @GET("api/v2/soccer/fixtures")
+    suspend fun getFixtures(
+        @Query("access_key") apiKey: String,
+        @Query("date") date: String? = null
+    ): StatPalLiveMatchesResponse
+
+    @GET("api/v2/soccer/matches")
+    suspend fun getMatches(
+        @Query("access_key") apiKey: String,
+        @Query("date") date: String? = null
+    ): StatPalLiveMatchesResponse
+
     @GET("api/v2/soccer/recent-upcoming")
     suspend fun getRecentUpcomingMatches(
         @Query("access_key") apiKey: String,
