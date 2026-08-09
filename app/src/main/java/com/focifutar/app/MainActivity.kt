@@ -726,8 +726,8 @@ fun MatchesListScreen(
     var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     var processedEventsMap by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     
-    // Villogó meccsek ID tárolója
-    var flashingMatchIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // Villogó meccsek és színeik tárolója (MatchId -> FlashColor)
+    var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
@@ -774,7 +774,7 @@ fun MatchesListScreen(
                     val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
 
                     if (isFav) {
-                        // Gól detektálás + 15 másodperces villogtatás
+                        // Gól detektálás + 15 másodperces ZÖLD villogtatás
                         if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
                             val oldScore = previousScoresMap[id]
                             if (oldScore != null && oldScore != scoreStr) {
@@ -782,9 +782,9 @@ fun MatchesListScreen(
                                 sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
                                 
                                 coroutineScope.launch {
-                                    flashingMatchIds = flashingMatchIds + id
+                                    flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
                                     delay(15000L) // 15 másodpercig villog
-                                    flashingMatchIds = flashingMatchIds - id
+                                    flashingMatchesState = flashingMatchesState - id
                                 }
                             }
                         }
@@ -801,7 +801,7 @@ fun MatchesListScreen(
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
-                        // Lapok (Sárga / Piros) ellenőrzése előtéren
+                        // Lapok (Sárga / Piros) ellenőrzése előtéren -> SÁRGA vagy PIROS villogás 15 mp-ig
                         val events = m.events?.event.orEmpty()
                         val currentMatchEvents = newProcessedEvents[id] ?: emptySet()
                         val updatedMatchEvents = currentMatchEvents.toMutableSet()
@@ -812,10 +812,19 @@ fun MatchesListScreen(
                                 val eventKey = "${event.minute}_${event.player}_${event.type}"
                                 if (!updatedMatchEvents.contains(eventKey)) {
                                     updatedMatchEvents.add(eventKey)
-                                    val cardIcon = if (type.contains("red")) "🟥" else "🟨"
-                                    val cardName = if (type.contains("red")) "Piros lap" else "Sárga lap"
+                                    val isRed = type.contains("red")
+                                    val cardIcon = if (isRed) "🟥" else "🟨"
+                                    val cardName = if (isRed) "Piros lap" else "Sárga lap"
                                     val cardText = "$cardIcon $cardName (${event.minute}'): ${event.player} (${m.home?.name} - ${m.away?.name})"
                                     sendSystemNotification(context, "⚠️ Lap esemény", cardText)
+
+                                    // Villogás indítása a kártya színével (Sárga = sárga, Piros = piros)
+                                    coroutineScope.launch {
+                                        val flashColor = if (isRed) Color(0xFFEF4444) else Color(0xFFEAB308)
+                                        flashingMatchesState = flashingMatchesState + (id to flashColor)
+                                        delay(15000L) // 15 másodpercig villog
+                                        flashingMatchesState = flashingMatchesState - id
+                                    }
                                 }
                             }
                         }
@@ -1109,11 +1118,11 @@ fun MatchesListScreen(
                     }
                     items(favoriteMatchesList) { (match, leagueId) ->
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
-                        val isFlashing = flashingMatchIds.contains(matchId)
+                        val flashColor = flashingMatchesState[matchId]
                         MatchRow(
                             match,
                             true,
-                            isFlashing,
+                            flashColor,
                             colors,
                             {
                                 toggleFavoriteMatch(context, matchId)
@@ -1157,12 +1166,12 @@ fun MatchesListScreen(
                         items(league.match) { match ->
                             val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                             val isFav = favoriteIds.contains(matchId)
-                            val isFlashing = flashingMatchIds.contains(matchId)
+                            val flashColor = flashingMatchesState[matchId]
 
                             MatchRow(
                                 match,
                                 isFav,
-                                isFlashing,
+                                flashColor,
                                 colors,
                                 {
                                     toggleFavoriteMatch(context, matchId)
@@ -1485,7 +1494,7 @@ fun LeagueHeader(
 fun MatchRow(
     match: StatPalMatch,
     isFavorite: Boolean,
-    isFlashing: Boolean,
+    flashColor: Color?,
     colors: AppColors,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit
@@ -1498,7 +1507,8 @@ fun MatchRow(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
-    // Villogó háttérszín animáció gól esetén (15 másodpercig aktív)
+    val isFlashing = flashColor != null
+    // Villogó animáció (15 másodpercig az adott esemény színével)
     val infiniteTransition = rememberInfiniteTransition(label = "flash")
     val flashAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
@@ -1510,8 +1520,9 @@ fun MatchRow(
         label = "flashAlpha"
     )
 
-    val borderColor = if (isFlashing) colors.accentPrimary.copy(alpha = flashAlpha) else if (live) colors.accentRed.copy(alpha = 0.8f) else colors.border
-    val cardBg = if (isFlashing) colors.accentPrimary.copy(alpha = 0.15f) else colors.background
+    val activeFlashColor = flashColor ?: colors.accentPrimary
+    val borderColor = if (isFlashing) activeFlashColor.copy(alpha = flashAlpha) else if (live) colors.accentRed.copy(alpha = 0.8f) else colors.border
+    val cardBg = if (isFlashing) activeFlashColor.copy(alpha = 0.15f) else colors.background
 
     Card(
         colors = CardDefaults.cardColors(containerColor = cardBg),
