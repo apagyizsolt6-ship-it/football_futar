@@ -709,13 +709,13 @@ fun MatchesListScreen(
         errorMessage = null
         coroutineScope.launch {
             try {
-                val response = if (isToday(selectedCalendar)) {
-                    StatPalClient.service.getLiveMatches(apiKey, dateParam)
-                } else {
+                val response = try {
+                    StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                } catch (e: Exception) {
                     try {
-                        StatPalClient.service.getRecentUpcomingMatches(apiKey, dateParam)
+                        StatPalClient.service.getLiveMatches(apiKey)
                     } catch (_: Exception) {
-                        StatPalClient.service.getLiveMatches(apiKey, dateParam)
+                        throw e
                     }
                 }
 
