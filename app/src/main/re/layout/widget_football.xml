@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1A1D21"
+    android:orientation="vertical"
+    android:padding="12.dp">
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="FOOTBALL FUTÁR"
+        android:textColor="#00FF66"
+        android:textSize="12.sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_match_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8.dp"
+        android:text="Betöltés..."
+        android:textColor="#FFFFFF"
+        android:textSize="14.sp" />
+
+</LinearLayout>
