@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -74,10 +76,15 @@ fun toggleFavoriteMatch(context: Context, matchId: String) {
 }
 
 // ==========================================
-// CSAPAT LOGÓ COMPOSABLE
+// CSAPAT LOGÓ COMPOSABLE (Javított méretezéssel)
 // ==========================================
 @Composable
-fun TeamLogo(logoUrl: String?, teamName: String, modifier: Modifier = Modifier.size(20.dp)) {
+fun TeamLogo(
+    logoUrl: String?,
+    teamName: String,
+    modifier: Modifier = Modifier.size(22.dp),
+    fontSize: TextUnit = 11.sp
+) {
     if (!logoUrl.isNullOrBlank()) {
         AsyncImage(
             model = logoUrl,
@@ -89,13 +96,14 @@ fun TeamLogo(logoUrl: String?, teamName: String, modifier: Modifier = Modifier.s
         Box(
             modifier = modifier
                 .clip(CircleShape)
-                .background(CardBackground),
+                .background(CardBackground)
+                .border(1.dp, AccentGreen.copy(alpha = 0.4f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = teamName.take(1).uppercase(),
                 color = AccentGreen,
-                fontSize = 10.sp,
+                fontSize = fontSize,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -135,7 +143,6 @@ fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
 
     val raw = matchDateStr.trim()
 
-    // Gyors string-egyezés
     if (raw.contains("$yFour-$mTwo-$dTwo") ||
         raw.contains("$dTwo.$mTwo.$yFour") ||
         raw.contains("$dTwo-$mTwo-$yFour") ||
@@ -143,7 +150,6 @@ fun isMatchOnSelectedDate(matchDateStr: String?, targetCal: Calendar): Boolean {
         return true
     }
 
-    // Dátum és időpont formátumok próbája
     val patterns = listOf(
         "dd.MM.yyyy HH:mm", "yyyy-MM-dd HH:mm", "dd.MM.yyyy", "yyyy-MM-dd",
         "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss'Z'", "MM/dd/yyyy"
@@ -179,24 +185,21 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 // ==========================================
-// OPTIMÁLIS AMATŐR SZŰRŐ (CSAK AZ IGAZI AMATŐR/UTÁNPÓTLÁS KISZŰRÉSE)
+// OPTIMÁLIS SZŰRŐ (CSAK AZ IGAZI AMATŐR/UTÁNPÓTLÁS/4. OSZTÁLY KISZŰRÉSE)
 // ==========================================
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
     val nameLower = leagueName.lowercase()
 
     val forbiddenKeywords = listOf(
-        // Női & Utánpótlás & Tartalék
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
         "u17", "u18", "u19", "u20", "u21", "u23", "youth", "junior", "u-19", "u-21",
         "reserve", "reserves", "(am)", "b-team", "b team", "sub-20", "sub-17",
-
-        // Tényleges amatőr & 3-4. osztályú ligák
-        "3. cfl", "3. msfl", "kakkonen", "oberliga", "landesliga",
-        "torneo federal", "gaucho 2", "amazonense 2", "vtora liga",
-        "calcutta", "durand cup", "cecafa", "1.liga classic",
-        "cymru south", "cymru north", "iii liga", "fnl 2",
-        "southern league", "isthmian", "serie d",
+        "3. cfl", "3. msfl", "4. liga", "kakkonen", "oberliga", "landesliga",
+        "regionalliga", "torneo federal", "gaucho 2", "amazonense 2", "vtora liga",
+        "calcutta", "durand cup", "cecafa", "1.liga classic", "esiliiga b",
+        "cymru south", "cymru north", "iii liga", "fnl 2", "npl premier",
+        "southern league", "isthmian", "serie d", "division 2", "division 3",
         "capixaba", "cearense", "goiano", "mineiro", "paranaense", "copa paulista",
         "copa governo", "nakotnes"
     )
@@ -205,7 +208,7 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 }
 
 // ==========================================
-// MAGYAROSÍTÓ HELPEREK
+// TELJES KÖRŰ MAGYAROSÍTÓ HELPEREK (JAVÍTOTT ORSZÁGOKKAL ÉS CZEHORSZÁG JAVÍTÁSSAL)
 // ==========================================
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
@@ -220,20 +223,27 @@ fun translateLeagueName(leagueName: String?): String {
         "AUSTRALIA" to "🇦🇺 AUSZTRÁLIA", "AUSTRIA" to "🇦🇹 AUSZTRIA", "AZERBAIJAN" to "🇦🇿 AZERBAJDZSÁN",
         "BELARUS" to "🇧🇾 FEHÉROROSZORSZÁG", "BELGIUM" to "🇧🇪 BELGIUM", "BHUTAN" to "🇧🇹 BHUTÁN", "BOLIVIA" to "🇧🇴 BOLÍVIA",
         "BOSNIA AND HERZEGOVINA" to "🇧🇦 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
-        "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA", "COLOMBIA" to "🇨🇴 KOLUMBIA",
-        "CROATIA" to "🇭🇷 HORVÁTORSZÁG", "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨ZEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
-        "ECUADOR" to "🇪🇨 ECUADOR", "EGYPT" to "🇪🇬 EGYIPTOM", "ENGLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 ANGLIA", "ESTONIA" to "🇪🇪 ÉSZTORSZÁG",
-        "EUROPE" to "🇪🇺 EURÓPA", "FAROE ISLANDS" to "🇫🇴 FERÖER", "FINLAND" to "🇫🇮 FINNORSZÁG", "FRANCE" to "🇫🇷 FRANCIAORSZÁG",
-        "GEORGIA" to "🇬🇪 GRÚZIA", "GERMANY" to "🇩🇪 NÉMETORSZÁG", "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "HUNGARY" to "🇭🇺 MAGYARORSZÁG",
-        "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA", "IRAN" to "🇮🇷 IRÁN",
-        "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL", "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN",
-        "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN", "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN", "LATVIA" to "🇱🇻 LETTORSZÁG",
-        "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG", "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA",
-        "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ", "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NORWAY" to "🇳🇴 NORVÉGIA",
+        "BURUNDI" to "🇧🇮 BURUNDI", "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA",
+        "COLOMBIA" to "🇨🇴 KOLUMBIA", "COSTA RICA" to "🇨🇷 COSTA RICA", "CROATIA" to "🇭🇷 HORVÁTORSZÁG",
+        "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨🇿 CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
+        "ECUADOR" to "🇪🇨 ECUADOR", "EGYPT" to "🇪🇬 EGYIPTOM", "EL SALVADOR" to "🇸🇻 EL SALVADOR",
+        "ENGLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 ANGLIA", "ESTONIA" to "🇪🇪 ÉSZTORSZÁG", "EUROPE" to "🇪🇺 EURÓPA",
+        "FAROE ISLANDS" to "🇫🇴 FERÖER", "FIJI" to "🇫🇯 FIJI", "FINLAND" to "🇫🇮 FINNORSZÁG",
+        "FRANCE" to "🇫🇷 FRANCIAORSZÁG", "GEORGIA" to "🇬🇪 GRÚZIA", "GERMANY" to "🇩🇪 NÉMETORSZÁG",
+        "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "GUATEMALA" to "🇬🇹 GUATEMALA", "HONDURAS" to "🇭🇳 HONDURAS",
+        "HUNGARY" to "🇭🇺 MAGYARORSZÁG", "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA",
+        "IRAN" to "🇮🇷 IRÁN", "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL", "ITALY" to "🇮🇹 OLASZORSZÁG",
+        "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN", "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN",
+        "LATVIA" to "🇱🇻 LETTORSZÁG", "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG",
+        "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
+        "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲🇰 ÉSZAK-MAKEDÓNIA",
+        "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY", "PERU" to "🇵🇪 PERU",
         "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA", "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA",
-        "RUSSIA" to "🇷🇺 OROSZORSZÁG", "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA", "SERBIA" to "🇷🇸 SZERBIA",
-        "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA", "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SPAIN" to "🇪🇸 SPANYOLORSZÁG",
-        "SWEDEN" to "🇸🇪 SVÉDORSZÁG", "SWITZERLAND" to "🇨🇭 SVÁJC", "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA",
+        "RUSSIA" to "🇷🇺 OROSZORSZÁG", "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA",
+        "SERBIA" to "🇷🇸 SZERBIA", "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA",
+        "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA", "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SOUTH KOREA" to "🇰🇷 DÉL-KOREA",
+        "SPAIN" to "🇪🇸 SPANYOLORSZÁG", "SRI LANKA" to "🇱🇰 SRI LANKA", "SWEDEN" to "🇸🇪 SVÉDORSZÁG",
+        "SWITZERLAND" to "🇨🇭 SVÁJC", "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA",
         "USA" to "🇺🇸 USA", "URUGUAY" to "🇺🇾 URUGUAY", "WORLD" to "🌐 VILÁG"
     )
 
@@ -245,10 +255,17 @@ fun translateLeagueName(leagueName: String?): String {
     }
 
     val termMap = mapOf(
+        "PROMOTION GROUP" to "RÁJÁTSZÁS", "RELEGATION GROUP" to "ALSÓHÁZ",
         "PLAY OFFS" to "RÁJÁTSZÁS", "PLAY-OFFS" to "RÁJÁTSZÁS",
         "PLACEMENT MATCHES" to "HELYOSZTÓK", "WINNERS STAGE" to "GYŐZTESEK SZAKASZA",
+        "NATIONAL LEAGUE SOUTH" to "NATIONALLIGA DÉL", "NATIONAL LEAGUE NORTH" to "NATIONALLIGA ÉSZAK",
         "CHAMPIONS LEAGUE" to "BAJNOKOK LIGÁJA", "EUROPA LEAGUE" to "EURÓPA-LIGA",
-        "CONFERENCE LEAGUE" to "KONFERENCIA LIGA", "FRIENDLIES" to "BARÁTSÁGOS"
+        "CONFERENCE LEAGUE" to "KONFERENCIA LIGA", "FRIENDLIES" to "BARÁTSÁGOS",
+        "GROUP A" to "A CSOPORT", "GROUP B" to "B CSOPORT", "GROUP C" to "C CSOPORT",
+        "GROUP D" to "D CSOPORT", "GROUP E" to "E CSOPORT", "GROUP F" to "F CSOPORT",
+        "GROUP 1" to "1. CSOPORT", "GROUP 2" to "2. CSOPORT", "GROUP 3" to "3. CSOPORT",
+        "GROUP 4" to "4. CSOPORT", "GROUP 5" to "5. CSOPORT", "GROUP 6" to "6. CSOPORT",
+        "1ST DIVISION" to "1. OSZTÁLY", "2ND DIVISION" to "2. OSZTÁLY", "3RD DIVISION" to "3. OSZTÁLY"
     )
 
     for ((en, hu) in termMap) {
@@ -315,14 +332,31 @@ fun translateChoice(choice: String?): String {
     }
 }
 
+// ==========================================
+// AI TIPP ELEMZÉS MAGYARÍTÁSA (KIBŐVÍTETT SZÓTÁR)
+// ==========================================
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
     var result: String = text
 
     val phraseReplacements = mapOf(
+        "has a strong historical head-to-head advantage over" to "jelentős egymás elleni előnnyel rendelkezik a következőkkel szemben:",
         "have a closely matched recent head-to-head record with many draws" to "szoros és kiegyenlített egymás elleni mérleggel rendelkeznek, sok döntetlennel",
         "have a closely matched recent head-to-head record" to "szoros egymás elleni mérleggel rendelkeznek",
-        "including two 2-2 draws in their last meetings" to "beleértve két 2-2-es döntetlent a legutóbbi meccseiken",
+        "especially at home" to "különösen hazai pályán",
+        "winning 16 of 24 home encounters" to "megnyerve a 24 hazai mérkőzésből 16-ot",
+        "winning" to "megnyerve",
+        "home encounters" to "hazai mérkőzést",
+        "Despite some recent struggles in friendlies" to "A legutóbbi barátságos mérkőzések nehézségei ellenére",
+        "squad is largely intact except for one defender sidelined" to "a keret egy sérült védőt leszámítva hiánytalan",
+        "while Cercle Brugge also has a key midfielder out" to "míg a vendégeknél is hiányzik egy kulcsfontosságú középpályás",
+        "The home advantage at" to "A hazai pálya előnye a",
+        "and Standard's deeper squad quality" to "valamint a hazaiak mélyebb, minőségibb kerete",
+        "recent transfer activity suggest they are favored to win" to "és a friss átigazolások alapján ők a mérkőzés esélyesei",
+        "Market odds also support a" to "A fogadási oddsok is a következőt támogatják:",
+        "with odds of" to "szorzóval,",
+        "indicating confidence in" to "jelezve a bizalmat a következőkben:",
+        "chances" to "esélyei",
         "in their last meetings" to "a legutóbbi összecsapásaikon",
         "Both teams are in good form" to "Mindkét csapat jó formának örvend",
         "unbeaten at home recently" to "hazai pályán veretlen mostanában",
@@ -346,8 +380,7 @@ fun translateReasoning(text: String?): String {
         "shows stronger form" to "jobb formát mutat",
         "key attacking players fit and motivated" to "a kulcsfontosságú támadók fittek és motiváltak",
         "lacks injuries" to "nincsenek sérültjei",
-        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában",
-        "döntetlens" to "döntetlen"
+        "has shown mixed recent results" to "felemás teljesítményt nyújtott mostanában"
     )
 
     for ((en, hu) in phraseReplacements) {
@@ -856,7 +889,9 @@ fun MatchRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(
                         logoUrl = match.home?.logo ?: match.home?.image,
-                        teamName = match.home?.name ?: ""
+                        teamName = match.home?.name ?: "",
+                        modifier = Modifier.size(20.dp),
+                        fontSize = 10.sp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -872,7 +907,9 @@ fun MatchRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(
                         logoUrl = match.away?.logo ?: match.away?.image,
-                        teamName = match.away?.name ?: ""
+                        teamName = match.away?.name ?: "",
+                        modifier = Modifier.size(20.dp),
+                        fontSize = 10.sp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -1013,16 +1050,26 @@ fun MatchDetailScreen(match: StatPalMatch, navController: NavController) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        TeamLogo(logoUrl = match.home?.logo ?: match.home?.image, teamName = match.home?.name ?: "", modifier = Modifier.size(36.dp))
-                        Spacer(modifier = Modifier.height(4.dp))
+                        TeamLogo(
+                            logoUrl = match.home?.logo ?: match.home?.image,
+                            teamName = match.home?.name ?: "",
+                            modifier = Modifier.size(40.dp),
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(match.home?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
                     Text("${match.home?.goals ?: "0"} - ${match.away?.goals ?: "0"}", color = AccentGreen, fontSize = 28.sp, fontWeight = FontWeight.Black)
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        TeamLogo(logoUrl = match.away?.logo ?: match.away?.image, teamName = match.away?.name ?: "", modifier = Modifier.size(36.dp))
-                        Spacer(modifier = Modifier.height(4.dp))
+                        TeamLogo(
+                            logoUrl = match.away?.logo ?: match.away?.image,
+                            teamName = match.away?.name ?: "",
+                            modifier = Modifier.size(40.dp),
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(match.away?.name ?: "-", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
