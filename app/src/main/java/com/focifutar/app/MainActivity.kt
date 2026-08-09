@@ -1520,25 +1520,27 @@ fun MatchRow(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
-    // Lapok kiszámolása a csapatokhoz az eseményekből
+    // Lapok kiszámolása tiszta nevek alapján (elkerülve a nem létező teamId hivatkozást)
     val events = match.events?.event.orEmpty()
-    
+    val homeName = match.home?.name.orEmpty()
+    val awayName = match.away?.name.orEmpty()
+
     val homeYellows = events.count { e -> 
         (e.type?.lowercase()?.contains("yellow") == true) && 
-        (e.team.orEmpty().equals(match.home?.name, ignoreCase = true) || e.teamId == match.home?.id)
+        e.team.orEmpty().equals(homeName, ignoreCase = true)
     }
     val homeReds = events.count { e -> 
         (e.type?.lowercase()?.contains("red") == true) && 
-        (e.team.orEmpty().equals(match.home?.name, ignoreCase = true) || e.teamId == match.home?.id)
+        e.team.orEmpty().equals(homeName, ignoreCase = true)
     }
 
     val awayYellows = events.count { e -> 
         (e.type?.lowercase()?.contains("yellow") == true) && 
-        (e.team.orEmpty().equals(match.away?.name, ignoreCase = true) || e.teamId == match.away?.id)
+        e.team.orEmpty().equals(awayName, ignoreCase = true)
     }
     val awayReds = events.count { e -> 
         (e.type?.lowercase()?.contains("red") == true) && 
-        (e.team.orEmpty().equals(match.away?.name, ignoreCase = true) || e.teamId == match.away?.id)
+        e.team.orEmpty().equals(awayName, ignoreCase = true)
     }
 
     val isFlashing = flashColor != null
@@ -1598,7 +1600,7 @@ fun MatchRow(
                     TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = match.home?.name ?: "-",
+                        text = homeName.ifBlank { "-" },
                         color = colors.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
@@ -1644,7 +1646,7 @@ fun MatchRow(
                     TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = match.away?.name ?: "-",
+                        text = awayName.ifBlank { "-" },
                         color = colors.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
