@@ -1520,6 +1520,27 @@ fun MatchRow(
     val awayG = match.away?.goals?.trim()
     val hasValidGoals = !homeG.isNullOrBlank() && homeG != "?" && !awayG.isNullOrBlank() && awayG != "?"
 
+    // Lapok kiszámolása a csapatokhoz az eseményekből
+    val events = match.events?.event.orEmpty()
+    
+    val homeYellows = events.count { e -> 
+        (e.type?.lowercase()?.contains("yellow") == true) && 
+        (e.team.orEmpty().equals(match.home?.name, ignoreCase = true) || e.teamId == match.home?.id)
+    }
+    val homeReds = events.count { e -> 
+        (e.type?.lowercase()?.contains("red") == true) && 
+        (e.team.orEmpty().equals(match.home?.name, ignoreCase = true) || e.teamId == match.home?.id)
+    }
+
+    val awayYellows = events.count { e -> 
+        (e.type?.lowercase()?.contains("yellow") == true) && 
+        (e.team.orEmpty().equals(match.away?.name, ignoreCase = true) || e.teamId == match.away?.id)
+    }
+    val awayReds = events.count { e -> 
+        (e.type?.lowercase()?.contains("red") == true) && 
+        (e.team.orEmpty().equals(match.away?.name, ignoreCase = true) || e.teamId == match.away?.id)
+    }
+
     val isFlashing = flashColor != null
     val infiniteTransition = rememberInfiniteTransition(label = "flash")
     val flashAlpha by infiniteTransition.animateFloat(
@@ -1572,6 +1593,7 @@ fun MatchRow(
             )
 
             Column(modifier = Modifier.weight(1f)) {
+                // HAZAI CSAPAT + LAPOK
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1579,12 +1601,45 @@ fun MatchRow(
                         text = match.home?.name ?: "-",
                         color = colors.textPrimary,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    
+                    if (homeYellows > 0) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFEAB308).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = if (homeYellows > 1) "🟨 $homeYellows" else "🟨",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEAB308),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (homeReds > 0) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = if (homeReds > 1) "🟥 $homeReds" else "🟥",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEF4444),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
 
+                // VENDÉG CSAPAT + LAPOK
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1592,12 +1647,44 @@ fun MatchRow(
                         text = match.away?.name ?: "-",
                         color = colors.textPrimary,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    if (awayYellows > 0) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFEAB308).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = if (awayYellows > 1) "🟨 $awayYellows" else "🟨",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEAB308),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (awayReds > 0) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = if (awayReds > 1) "🟥 $awayReds" else "🟥",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEF4444),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            Column(horizontalAlignment = Alignment.End) {
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
                 Text(
                     text = if (hasValidGoals) homeG!! else "-",
                     color = if (live) colors.accentPrimary else colors.textPrimary,
