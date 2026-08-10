@@ -235,7 +235,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 fun getFavoriteMatchIds(context: Context): Set<String> {
@@ -437,9 +437,9 @@ fun isTopLeague(leagueName: String?): Boolean {
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
 
-    val parts = leagueName.split(":")
-    var countryPart = parts[0].trim()
-    var leaguePart = if (parts.size > 1) parts[1].trim() else ""
+    val parts = leagueName?.split(":") ?: emptyList()
+    var countryPart = parts.getOrNull(0)?.trim() ?: ""
+    var leaguePart = if (parts.size > 1) parts.getOrNull(1)?.trim() ?: "" else ""
 
     val countryMap = mapOf(
         "AFRICA" to "🌍 AFRIKA", "ALBANIA" to "🇦🇱 ALBÁNIA", "ALGERIA" to "🇩🇿 ALGÉRIA", "ANDORRA" to "🇦🇩 ANDORRA",
@@ -484,7 +484,7 @@ fun translateLeagueName(leagueName: String?): String {
 
 fun translateStatus(status: String?): String {
     if (status.isNullOrBlank()) return ""
-    val s = status.uppercase().trim()
+    val s = status?.uppercase()?.trim() ?: ""
     return when {
         s == "FT" || s == "FINISHED" -> "VÉGE"
         s == "AET" -> "H.U. VÉGE"
@@ -494,24 +494,24 @@ fun translateStatus(status: String?): String {
         s.startsWith("POSTP") || s == "PPD" -> "ELHAL."
         s.startsWith("CANC") || s.startsWith("ABAND") -> "ELMARADT"
         s.startsWith("SUSP") || s.startsWith("INTERR") -> "FÉLBESZ."
-        else -> status
+        else -> status ?: ""
     }
 }
 
 fun translatePosition(pos: String?): String {
     if (pos.isNullOrBlank()) return ""
-    return when (pos.lowercase().trim()) {
+    return when (pos?.lowercase()?.trim()) {
         "goalkeeper" -> "Kapus"
         "defender" -> "Védő"
         "midfielder" -> "Középpályás"
         "attacker", "forward" -> "Támadó"
-        else -> pos
+        else -> pos ?: ""
     }
 }
 
 fun translateInjuryStatus(status: String?): String {
     if (status.isNullOrBlank()) return ""
-    var result: String = status
+    var result: String = status ?: ""
     val translations = mapOf(
         "hamstring injury" to "Combhajlító-sérülés",
         "knee injury" to "Térdsérülés",
@@ -531,18 +531,18 @@ fun translateInjuryStatus(status: String?): String {
 
 fun translateChoice(choice: String?): String {
     if (choice.isNullOrBlank()) return "-"
-    val c = choice.trim()
+    val c = choice?.trim() ?: ""
     return when {
         c.equals("Home win", ignoreCase = true) || c.equals("Home to win", ignoreCase = true) -> "Hazai győzelem"
         c.equals("Away win", ignoreCase = true) || c.equals("Away to win", ignoreCase = true) -> "Vendég győzelem"
         c.equals("Draw", ignoreCase = true) -> "Döntetlen"
-        else -> c
+        else -> choice ?: "-"
     }
 }
 
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
-    return text
+    return text ?: "-"
 }
 
 // ==========================================
@@ -1269,7 +1269,6 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
     var balance by remember { mutableStateOf(getVirtualBalance(context)) }
 
     val totalStaked = savedBets.sumOf { it.stake }
-    val totalWonCount = savedBets.count { it.status == "NYERT" }
 
     Column(
         modifier = Modifier
@@ -1303,7 +1302,6 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Vizuális Bankroll & Statisztika Kártya
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
             modifier = Modifier
@@ -2545,7 +2543,6 @@ fun BetSlipBar(
                             )
                         }
 
-                        // ÚJ: Gyors tét növelő gombok (+1000, +5000, MAX)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
