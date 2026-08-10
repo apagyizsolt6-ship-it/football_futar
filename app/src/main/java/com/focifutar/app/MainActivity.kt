@@ -503,9 +503,9 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 fun isAllowedLeague(leagueName: String?): Boolean {
-    val safeLeagueName = leagueName ?: return false
-    if (safeLeagueName.isBlank()) return false
-    val nameLower = safeLeagueName.lowercase()
+    val name = leagueName ?: return false
+    if (name.isBlank()) return false
+    val nameLower = name.lowercase()
 
     val forbiddenKeywords = listOf(
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
@@ -525,9 +525,9 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 }
 
 fun isTopLeague(leagueName: String?): Boolean {
-    val safeLeagueName = leagueName ?: return false
-    if (safeLeagueName.isBlank()) return false
-    val l = safeLeagueName.uppercase()
+    val name = leagueName ?: return false
+    if (name.isBlank()) return false
+    val l = name.uppercase()
     val topKeywords = listOf(
         "NB I", "PREMIER LEAGUE", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1",
         "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CONFERENCE LEAGUE", "EREDIVISIE",
@@ -537,9 +537,10 @@ fun isTopLeague(leagueName: String?): Boolean {
 }
 
 fun translateLeagueName(leagueName: String?): String {
-    if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
+    val name = leagueName ?: return "ISMERETLEN BAJNOKSÁG"
+    if (name.isBlank()) return "ISMERETLEN BAJNOKSÁG"
 
-    val parts = leagueName!!.split(":")
+    val parts = name.split(":")
     var countryPart = parts.getOrNull(0)?.trim() ?: ""
     var leaguePart = if (parts.size > 1) parts.getOrNull(1)?.trim() ?: "" else ""
 
@@ -558,10 +559,11 @@ fun translateLeagueName(leagueName: String?): String {
         "FRANCE" to "🇫🇷 FRANCIAORSZÁG", "GEORGIA" to "🇬🇪 GRÚZIA", "GERMANY" to "🇩🇪 NÉMETORSZÁG",
         "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "GUATEMALA" to "🇬🇹 GUATEMALA", "HONDURAS" to "🇭🇳 HONDURAS",
         "HUNGARY" to "🇭🇺 MAGYARORSZÁG", "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA",
-        "IRAN" to "🇮🇷 IRÁN", "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL", "ITALY" to "🇮🇹 OLASZORSZÁG",
-        "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN", "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN",
-        "LATVIA" to "🇱🇻 LETTORSZÁG", "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG",
-        "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
+        "IRAN" to "🇮🇷 IRÁN", "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL",
+        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN",
+        "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN", "LATVIA" to "🇱🇻 LETTORSZÁG",
+        "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG", "MEXICO" to "🇲🇽 MEXIKÓ",
+        "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
         "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲🇰 ÉSZAK-MAKEDÓNIA",
         "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY",
         "PERU" to "🇵🇪 PERU", "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA",
@@ -586,8 +588,7 @@ fun translateLeagueName(leagueName: String?): String {
 }
 
 fun translateStatus(status: String?): String {
-    if (status.isNullOrBlank()) return ""
-    val s = status.uppercase().trim()
+    val s = status?.uppercase()?.trim() ?: return ""
     return when {
         s == "FT" || s == "FINISHED" -> "VÉGE"
         s == "AET" -> "H.U. VÉGE"
@@ -597,24 +598,23 @@ fun translateStatus(status: String?): String {
         s.startsWith("POSTP") || s == "PPD" -> "ELHAL."
         s.startsWith("CANC") || s.startsWith("ABAND") -> "ELMARADT"
         s.startsWith("SUSP") || s.startsWith("INTERR") -> "FÉLBESZ."
-        else -> status
+        else -> s
     }
 }
 
 fun translatePosition(pos: String?): String {
-    if (pos.isNullOrBlank()) return ""
-    return when (pos.lowercase().trim()) {
+    val p = pos?.lowercase()?.trim() ?: return ""
+    return when (p) {
         "goalkeeper" -> "Kapus"
         "defender" -> "Védő"
         "midfielder" -> "Középpályás"
         "attacker", "forward" -> "Támadó"
-        else -> pos
+        else -> p
     }
 }
 
 fun translateInjuryStatus(status: String?): String {
-    if (status.isNullOrBlank()) return ""
-    var result: String = status
+    var result = status ?: return ""
     val translations = mapOf(
         "hamstring injury" to "Combhajlító-sérülés",
         "knee injury" to "Térdsérülés",
@@ -633,19 +633,17 @@ fun translateInjuryStatus(status: String?): String {
 }
 
 fun translateChoice(choice: String?): String {
-    if (choice.isNullOrBlank()) return "-"
-    val c = choice.trim()
+    val c = choice?.trim() ?: return "-"
     return when {
         c.equals("Home win", ignoreCase = true) || c.equals("Home to win", ignoreCase = true) -> "Hazai győzelem"
         c.equals("Away win", ignoreCase = true) || c.equals("Away to win", ignoreCase = true) -> "Vendég győzelem"
         c.equals("Draw", ignoreCase = true) -> "Döntetlen"
-        else -> choice
+        else -> c
     }
 }
 
 fun translateReasoning(text: String?): String {
-    if (text.isNullOrBlank()) return "-"
-    return text
+    return text?.takeIf { it.isNotBlank() } ?: "-"
 }
 
 // ==========================================
@@ -841,7 +839,6 @@ class MainActivity : ComponentActivity() {
                                         )
                                         saveNewBet(context, newBet)
 
-                                        // AUTOMATIKUS KEDVENCKÉ TÉTEL & ÉRTESÍTÉSEK
                                         val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
                                         val currentFavs = prefs.getStringSet("favorite_matches", emptySet())?.toMutableSet() ?: mutableSetOf()
                                         var addedCount = 0
@@ -2629,7 +2626,6 @@ fun OddsTab(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        // 1. 1X2 PIAC
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -2663,7 +2659,6 @@ fun OddsTab(
             }
         }
 
-        // 2. GÓL-GÓL (BTTS) ÉS OVER / UNDER 2.5
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -2699,7 +2694,6 @@ fun OddsTab(
             }
         }
 
-        // 3. FÉLIDŐ (HT 1X2) ÉS EGYÉB PIAC
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
