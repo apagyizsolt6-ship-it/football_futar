@@ -139,6 +139,19 @@ fun toggleFavoriteLeague(context: Context, leagueKey: String) {
 }
 
 // ==========================================
+// ÉRTESÍTÉSI PREFERENCIÁK KEZELÉSE
+// ==========================================
+fun getNotificationPref(context: Context, key: String, defaultVal: Boolean): Boolean {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getBoolean(key, defaultVal)
+}
+
+fun setNotificationPref(context: Context, key: String, value: Boolean) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean(key, value).apply()
+}
+
+// ==========================================
 // TARTÓS ESEMÉNY- ÉS ÉRTESÍTÉS KEZELÉS (DUPLIKÁCIÓ SZŰRÉS)
 // ==========================================
 fun isEventAlreadyProcessed(context: Context, eventKey: String): Boolean {
@@ -754,6 +767,7 @@ fun MatchesListScreen(
     var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isOnlyLiveFilter by remember { mutableStateOf(false) }
     var isTopLeaguesFilter by remember { mutableStateOf(false) }
+    var isFavoriteLeaguesFilter by remember { mutableStateOf(false) } // ÚJ: Kedvenc ligák szűrő
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
@@ -803,6 +817,10 @@ fun MatchesListScreen(
                 val newlyFinished = finishedMatchesMap.toMutableSet()
                 val newlyHt = halftimeMatchesMap.toMutableSet()
 
+                val goalsEnabled = getNotificationPref(context, "notif_goals", true)
+                val cardsEnabled = getNotificationPref(context, "notif_cards", true)
+                val statusEnabled = getNotificationPref(context, "notif_status", true)
+
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
                     val scoreStr = "${m.home?.goals ?: "0"}-${m.away?.goals ?: "0"}"
@@ -814,7 +832,7 @@ fun MatchesListScreen(
                     val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
 
                     if (isFav) {
-                        if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
+                        if (previousScoresMap.containsKey(id) && isLiveMatch(m) && goalsEnabled) {
                             val oldScore = previousScoresMap[id]
                             if (oldScore != null && oldScore != scoreStr) {
                                 val goalEventKey = "goal_${id}_${scoreStr}"
@@ -833,14 +851,14 @@ fun MatchesListScreen(
                         }
 
                         val htEventKey = "ht_${id}"
-                        if (isHtNow && !newlyHt.contains(id) && !isEventAlreadyProcessed(context, htEventKey)) {
+                        if (isHtNow && !newlyHt.contains(id) && !isEventAlreadyProcessed(context, htEventKey) && statusEnabled) {
                             markEventAsProcessed(context, htEventKey)
                             newlyHt.add(id)
                             sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
                         val ftEventKey = "ft_${id}"
-                        if (isFinishedNow && !newlyFinished.contains(id) && !isEventAlreadyProcessed(context, ftEventKey)) {
+                        if (isFinishedNow && !newlyFinished.contains(id) && !isEventAlreadyProcessed(context, ftEventKey) && statusEnabled) {
                             markEventAsProcessed(context, ftEventKey)
                             newlyFinished.add(id)
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
@@ -849,7 +867,7 @@ fun MatchesListScreen(
                         val events = m.events?.event.orEmpty()
                         events.forEach { event ->
                             val type = event.type?.lowercase() ?: ""
-                            if (type.contains("yellow") || type.contains("red")) {
+                            if ((type.contains("yellow") || type.contains("red")) && cardsEnabled) {
                                 val eventKey = "card_${id}_${event.minute}_${event.player}_${event.type}"
                                 if (!isEventAlreadyProcessed(context, eventKey)) {
                                     markEventAsProcessed(context, eventKey)
@@ -903,8 +921,13 @@ fun MatchesListScreen(
         leagues.sumOf { league -> league.match.count { isLiveMatch(it) } }
     }
 
-    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, searchQuery, favoriteLeagueKeys) {
+    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, searchQuery, favoriteLeagueKeys) {
         val baseList = leagues.mapNotNull { league ->
+            val leagueKey = league.id ?: league.name ?: ""
+            if (isFavoriteLeaguesFilter && !favoriteLeagueKeys.contains(leagueKey)) {
+                return@mapNotNull null
+            }
+
             val matches = league.match
             val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
             val matchesAfterSearch = if (searchQuery.isNotBlank()) {
@@ -999,6 +1022,20 @@ fun MatchesListScreen(
                         .padding(6.dp)
                 ) {
                     Text(text = "🔍", fontSize = 12.sp)
+                }
+
+                // ÚJ: Kedvenc ligák gyorsszűrő gomb
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isFavoriteLeaguesFilter) colors.accentYellow else colors.cardBackground)
+                        .clickable { isFavoriteLeaguesFilter = !isFavoriteLeaguesFilter }
+                        .padding(horizontal = 6.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = "⭐",
+                        fontSize = 10.sp
+                    )
                 }
 
                 Box(
@@ -1484,7 +1521,7 @@ fun LeagueHeader(
             .fillMaxWidth()
             .background(colors.cardBackground)
             .clickable { onToggle() }
-            .padding(horizontal = 16.dp, vertical = 12.dp) // Kicsit növeltük a sor belső magasságát is a kényelmesebb kattintásért
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1510,7 +1547,6 @@ fun LeagueHeader(
                 )
             }
 
-            // ITT NÖVELTÜK MEG A TÉRKÖZT (spacedBy = 24.dp) ÉS A KLIKKELHETŐ TERÜLETET MINDEN EGYES SORBAN
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -1756,7 +1792,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -1993,42 +2029,78 @@ fun MatchDetailScreen(
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
                     }
-                } else if (h2hMatches.isEmpty()) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("📊 FUTÁR STATISZTIKAI ELEMZÉS", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "A hivatalos egymás elleni archívum nem érhető el ehhez a párosításhoz. A csapatok aktuális szezonbeli mutatói alapján azonban kiegyenlített, harcos összecsapásra van kilátás.",
-                                color = colors.textPrimary,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(h2hMatches) { h2h ->
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(1.dp, colors.border, RoundedCornerShape(8.dp))
-                            ) {
-                                Row(
+                        // ÚJ: Vizuális Forma Összehasonlító Kártya H2H alatt
+                        if (homeFormStr.isNotBlank() || awayFormStr.isNotBlank()) {
+                            item {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                    modifier = Modifier.fillMaxWidth().border(1.dp, colors.accentPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Text("📈 AKTUÁLIS FORMA ÖSSZEHASONLÍTÁS", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(match.home?.name ?: "Hazai", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            FormIndicator(homeFormStr, colors)
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(match.away?.name ?: "Vendég", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            FormIndicator(awayFormStr, colors)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (h2hMatches.isEmpty()) {
+                            item {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                    modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text("📊 FUTÁR STATISZTIKAI ELEMZÉS", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "A hivatalos egymás elleni archívum nem érhető el ehhez a párosításhoz. A csapatok aktuális szezonbeli mutatói alapján azonban kiegyenlített, harcos összecsapásra van kilátás.",
+                                            color = colors.textPrimary,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            items(h2hMatches) { h2h ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .border(1.dp, colors.border, RoundedCornerShape(8.dp))
                                 ) {
-                                    Column {
-                                        Text(h2h.date ?: "", color = colors.textMuted, fontSize = 11.sp)
-                                        Text("${h2h.team1Name} vs ${h2h.team2Name}", color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(h2h.date ?: "", color = colors.textMuted, fontSize = 11.sp)
+                                            Text("${h2h.team1Name} vs ${h2h.team2Name}", color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                        }
+                                        Text("${h2h.team1Score} - ${h2h.team2Score}", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                     }
-                                    Text("${h2h.team1Score} - ${h2h.team2Score}", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 }
                             }
                         }
@@ -2577,6 +2649,11 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
 
+    // ÚJ: Értesítési kapcsolók állapota
+    var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
+    var cardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_cards", true)) }
+    var statusNotif by remember { mutableStateOf(getNotificationPref(context, "notif_status", true)) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2593,19 +2670,21 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         )
 
         Text(
-            text = "API BEÁLLÍTÁSOK",
+            text = "BEÁLLÍTÁSOK",
             color = colors.textPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
 
-        Text(
-            text = "Illeszd be a StatPal API kulcsodat az élő adatok lekéréséhez.",
-            color = colors.textMuted,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-        )
+        Spacer(modifier = Modifier.height(16.dp))
 
+        Text(
+            text = "StatPal API Kulcs",
+            color = colors.accentPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
         OutlinedTextField(
             value = apiKeyInput,
             onValueChange = { apiKeyInput = it },
@@ -2621,12 +2700,81 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "🔔 ÉRTESÍTÉSI PREFERENCIÁK",
+            color = colors.accentPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("⚽ Gól értesítések", color = colors.textPrimary, fontSize = 13.sp)
+                    Switch(
+                        checked = goalsNotif,
+                        onCheckedChange = {
+                            goalsNotif = it
+                            setNotificationPref(context, "notif_goals", it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = colors.accentPrimary)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🟨🟥 Sárga és Piros lapok", color = colors.textPrimary, fontSize = 13.sp)
+                    Switch(
+                        checked = cardsNotif,
+                        onCheckedChange = {
+                            cardsNotif = it
+                            setNotificationPref(context, "notif_cards", it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = colors.accentPrimary)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("⏱️ Félidő / Vége státuszok", color = colors.textPrimary, fontSize = 13.sp)
+                    Switch(
+                        checked = statusNotif,
+                        onCheckedChange = {
+                            statusNotif = it
+                            setNotificationPref(context, "notif_status", it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = colors.accentPrimary)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
                 saveApiKey(context, apiKeyInput)
-                Toast.makeText(context, "API Kulcs elmentve!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
                 navController.popBackStack()
             },
             colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
