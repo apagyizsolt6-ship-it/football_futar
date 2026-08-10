@@ -258,7 +258,7 @@ fun saveGeminiApiKey(context: Context, key: String) {
 
 fun getGeminiApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
+    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 // ==========================================
