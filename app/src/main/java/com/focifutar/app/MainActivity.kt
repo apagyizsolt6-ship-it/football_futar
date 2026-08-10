@@ -51,10 +51,15 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -236,6 +241,68 @@ fun saveApiKey(context: Context, key: String) {
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+}
+
+fun saveGeminiApiKey(context: Context, key: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val cleanKey = key.trim().replace("\"", "").replace("'", "")
+    prefs.edit().putString("gemini_api_key", cleanKey).apply()
+}
+
+fun getGeminiApiKey(context: Context): String {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+}
+
+// ==========================================
+// GEMINI WEB ODDS LEKÉRDEZÉS
+// ==========================================
+suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): Triple<String, String, String>? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+
+            val prompt = "Keresd meg a neten a $home vs $away futball mérkőzés 1X2 oddsait (hazai győzelem, döntetlen, vendég győzelem). Add vissza KIZÁRÓLAG egy valid JSON formátumban, semmilyen egyéb szöveg, magyarázat vagy markdown blokk nélkül: {\"home\": \"1.xx\", \"draw\": \"3.xx\", \"away\": \"3.xx\"}"
+            
+            val body = """
+                {
+                  "contents": [{
+                    "parts": [{
+                      "text": "$prompt"
+                    }]
+                  }],
+                  "tools": [{"googleSearch": {}}]
+                }
+            """.trimIndent()
+
+            conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
+
+            if (conn.responseCode == 200) {
+                val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonObj = JsonParser.parseString(responseStr).asJsonObject
+                val candidates = jsonObj.getAsJsonArray("candidates")
+                if (candidates != null && candidates.size() > 0) {
+                    val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
+                    val parts = content.getAsJsonArray("parts")
+                    val text = parts.get(0).asJsonObject.get("text").asString
+                    
+                    val cleanJson = text.replace("```json", "").replace("```", "").trim()
+                    val oddsObj = JsonParser.parseString(cleanJson).asJsonObject
+                    val h = oddsObj.get("home").asString
+                    val d = oddsObj.get("draw").asString
+                    val a = oddsObj.get("away").asString
+                    return@withContext Triple(h, d, a)
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
 }
 
 fun getFavoriteMatchIds(context: Context): Set<String> {
@@ -2360,17 +2427,18 @@ fun OddsTab(
     colors: AppColors,
     onToggleOdds: (BetSlipItem) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val geminiKey = remember { getGeminiApiKey(context) }
+
+    var geminiOdds by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var isGeminiLoading by remember { mutableStateOf(false) }
+    var geminiTried by remember { mutableStateOf(false) }
+
     val homeName = match.home?.name ?: "Hazai"
     val awayName = match.away?.name ?: "Vendég"
     val matchId = match.mainId ?: "$homeName-$awayName"
     val matchTitle = "$homeName vs $awayName"
-
-    if (isLoadingOdds) {
-        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = colors.accentPrimary)
-        }
-        return
-    }
 
     val oneXtwoCategory = prematchOddsMatch?.odds.orEmpty().find { 
         it.name.equals("1x2", ignoreCase = true) || it.name.equals("Fulltime Result", ignoreCase = true) 
@@ -2382,10 +2450,39 @@ fun OddsTab(
     val apiDrawOdd = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value
     val apiAwayOdd = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value
 
-    val homeOddVal = apiHomeOdd ?: "1.95"
-    val drawOddVal = apiDrawOdd ?: "3.40"
-    val awayOddVal = apiAwayOdd ?: "3.75"
-    val bookmakerName = bookmaker?.name ?: "Futár Smart Odds"
+    val hasStatPalOdds = !apiHomeOdd.isNullOrBlank()
+
+    LaunchedEffect(match, prematchOddsMatch) {
+        if (!hasStatPalOdds && !geminiTried && geminiKey.isNotBlank()) {
+            isGeminiLoading = true
+            geminiTried = true
+            val result = fetchOddsFromGemini(geminiKey, homeName, awayName)
+            if (result != null) {
+                geminiOdds = result
+            }
+            isGeminiLoading = false
+        }
+    }
+
+    if (isLoadingOdds || isGeminiLoading) {
+        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = colors.accentPrimary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (isGeminiLoading) "🤖 Gemini keresi az oddsokat a neten..." else "Oddsok betöltése...",
+                    color = colors.textMuted,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        return
+    }
+
+    val homeOddVal = apiHomeOdd ?: geminiOdds?.first ?: "1.95"
+    val drawOddVal = apiDrawOdd ?: geminiOdds?.second ?: "3.40"
+    val awayOddVal = apiAwayOdd ?: geminiOdds?.third ?: "3.75"
+    val bookmakerName = if (!apiHomeOdd.isNullOrBlank()) (bookmaker?.name ?: "StatPal Odds") else (if (geminiOdds != null) "🤖 Gemini Web Odds" else "Futár Smart Odds")
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
@@ -2705,6 +2802,7 @@ fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean, color
 fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
+    var geminiKeyInput by remember { mutableStateOf(getGeminiApiKey(context)) }
 
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
     var cardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_cards", true)) }
@@ -2745,6 +2843,30 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
             value = apiKeyInput,
             onValueChange = { apiKeyInput = it },
             label = { Text("StatPal API Key", color = colors.textMuted) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.accentPrimary,
+                unfocusedBorderColor = colors.border,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Gemini API Kulcs (Web Odds kereséshez)",
+            color = colors.accentPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = geminiKeyInput,
+            onValueChange = { geminiKeyInput = it },
+            label = { Text("Gemini API Key", color = colors.textMuted) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -2830,6 +2952,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         Button(
             onClick = {
                 saveApiKey(context, apiKeyInput)
+                saveGeminiApiKey(context, geminiKeyInput)
                 Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
                 navController.popBackStack()
             },
