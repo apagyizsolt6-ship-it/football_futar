@@ -479,8 +479,11 @@ fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
 }
 
+// JAVÍTOTT, AZONNALI ÉLŐ-FELISMERŐ LOGIKA
 fun isLiveMatch(match: StatPalMatch): Boolean {
-    val rawStatus = (match.status ?: match.time ?: "").trim().uppercase()
+    val statusStr = match.status?.trim()?.uppercase() ?: ""
+    val timeStr = match.time?.trim()?.uppercase() ?: ""
+    val rawStatus = (statusStr.ifBlank { timeStr }).uppercase()
     if (rawStatus.isBlank()) return false
 
     if (rawStatus.contains("POSTP") || rawStatus.contains("PPD") || 
@@ -493,6 +496,13 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
     if (rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || 
         rawStatus == "AET" || rawStatus == "AP" || rawStatus == "ENDED") {
         return false
+    }
+
+    // Ha percmutató, élő státuszkód vagy tiszta szám van a status-ban -> ÉLŐ MECCS
+    if (rawStatus.contains("'") || rawStatus == "1H" || rawStatus == "2H" || 
+        rawStatus == "HT" || rawStatus == "LIVE" || rawStatus == "INPLAY" ||
+        match.status?.toIntOrNull() != null) {
+        return true
     }
 
     if (rawStatus.contains(":") && !rawStatus.contains("'")) {
@@ -691,7 +701,7 @@ fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
     } else {
         return Pair(
             "🎯 $homeName vs $awayName - Futár Pre-Match Elemzés",
-            "Mérkőzés előtti elemzés: A két csapat bajnoki formája és stílusa alapján taktikai csatára számítunk. Az első félidőben óvatosabb tapogatózés várható, de a hazai pálya és a pontrúgások döntő faktorok lehetnek a találkozó sorsában."
+            "Mérkőzés előtti elemzés: A két csapat bajnoki formája és stílusa alapján taktikai csatára számítunk. Az első félidőben óvatosabb tapogatózás várható, de a hazai pálya és a pontrúgások döntő faktorok lehetnek a találkozó sorsában."
         )
     }
 }
@@ -1220,11 +1230,16 @@ fun MatchesListScreen(
                     }
                 }
                 item {
+                    // JAVÍTOTT KÉNYSZERÍTETT FRISSÍTÉS (TÖRLI A MEMÓRIACACHE-T IS)
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(colors.cardBackground)
-                            .clickable { fetchMatches(forceRefresh = true) }
+                            .clickable {
+                                val offset = calculateDayOffset(selectedCalendar)
+                                ApiCacheManager.put("matches_offset_$offset", emptyList<StatPalLeague>())
+                                fetchMatches(forceRefresh = true)
+                            }
                             .padding(8.dp)
                     ) {
                         Text(text = "🔄", fontSize = 13.sp)
@@ -2605,7 +2620,6 @@ fun OddsTab(
         return
     }
 
-    // Intelligens fallback: Ha nincsenek API oddsok, stabil, reális esélyeket generálunk, hogy ne maradjon üresen a szelvény!
     val homeOddVal = apiHomeOdd ?: geminiOdds?.home ?: "1.95"
     val drawOddVal = apiDrawOdd ?: geminiOdds?.draw ?: "3.40"
     val awayOddVal = apiAwayOdd ?: geminiOdds?.away ?: "3.75"
