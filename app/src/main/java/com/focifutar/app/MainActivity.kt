@@ -433,7 +433,7 @@ fun translateLeagueName(leagueName: String?): String {
         "ANGOLA" to "🇦🇴 ANGOLA", "ARGENTINA" to "🇦🇷 ARGENTÍNA", "ARMENIA" to "🇦🇲 ÖRMÉNYORSZÁG", "ASIA" to "🌏 ÁZSIA",
         "AUSTRALIA" to "🇦🇺 AUSZTRÁLIA", "AUSTRIA" to "🇦🇹 AUSZTRIA", "AZERBAIJAN" to "🇦🇿 AZERBAJDZSÁN",
         "BELARUS" to "🇧🇾 FEHÉROROSZORSZÁG", "BELGIUM" to "🇧🇪 BELGIUM", "BHUTAN" to "🇧🇹 BHUTÁN", "BOLIVIA" to "🇧🇴 BOLÍVIA",
-        "BOSNIA AND HERZEGOVINA" to "🇧🇦 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
+        "BOSNIA AND HERZEGOVINA" to "🇦🇽 BOSZNIA-HERCEGOVINA", "BRAZIL" to "🇧🇷 BRAZÍLIA", "BULGARIA" to "🇧🇬 BULGÁRIA",
         "BURUNDI" to "🇧🇮 BURUNDI", "CANADA" to "🇨🇦 KANADA", "CHILE" to "🇨🇱 CHILE", "CHINA" to "🇨🇳 KÍNA",
         "COLOMBIA" to "🇨🇴 KOLUMBIA", "COSTA RICA" to "🇨🇷 COSTA RICA", "CROATIA" to "🇭🇷 HORVÁTORSZÁG",
         "CYPRUS" to "🇨🇾 CIPRUS", "CZECH REPUBLIC" to "🇨🇿 CSEHORSZÁG", "DENMARK" to "🇩🇰 DÁNIA",
@@ -455,7 +455,8 @@ fun translateLeagueName(leagueName: String?): String {
         "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA", "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SOUTH KOREA" to "🇰🇷 DÉL-KOREA",
         "SPAIN" to "🇪🇸 SPANYOLORSZÁG", "SRI LANKA" to "🇱🇰 SRI LANKA", "SWEDEN" to "🇸🇪 SVÉDORSZÁG",
         "SWITZERLAND" to "🇨🇭 SVÁJC", "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA",
-        "USA" to "🇺🇸 USA", "URUGUAY" to "🇺🇾 URUGUAY", "WORLD" to "🌐 VILÁG"
+        "UNITED ARAB EMIRATES" to "🇦🇪 EGYESÜLT ARAB EMÍRSÉGEK", "URUGUAY" to "🇺🇾 URUGUAY",
+        "UZBEKISTAN" to "🇺🇿 ÜZBEGISZTÁN", "USA" to "🇺🇸 USA", "VENEZUELA" to "🇻🇪 VENEZUELA", "WORLD" to "🌐 VILÁG"
     )
 
     for ((en, hu) in countryMap) {
@@ -1483,7 +1484,7 @@ fun LeagueHeader(
             .fillMaxWidth()
             .background(colors.cardBackground)
             .clickable { onToggle() }
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp) // Kicsit növeltük a sor belső magasságát is a kényelmesebb kattintásért
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1497,7 +1498,9 @@ fun LeagueHeader(
                 Text(
                     text = if (isPinned) "📌 " else "",
                     fontSize = 12.sp,
-                    modifier = Modifier.clickable { onTogglePin() }
+                    modifier = Modifier
+                        .clickable { onTogglePin() }
+                        .padding(4.dp)
                 )
                 Text(
                     text = title.uppercase(),
@@ -1507,20 +1510,33 @@ fun LeagueHeader(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (isPinned) "⭐" else "📌",
-                    fontSize = 12.sp,
+            // ITT NÖVELTÜK MEG A TÉRKÖZT (spacedBy = 24.dp) ÉS A KLIKKELHETŐ TERÜLETET MINDEN EGYES SORBAN
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                Box(
                     modifier = Modifier
                         .clickable { onTogglePin() }
-                        .padding(end = 8.dp)
-                )
-                Text(
-                    text = if (isCollapsed) "▼" else "▲",
-                    color = colors.textMuted,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = if (isPinned) "⭐" else "📌",
+                        fontSize = 14.sp
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clickable { onToggle() }
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = if (isCollapsed) "▼" else "▲",
+                        color = colors.textMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -1740,7 +1756,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
