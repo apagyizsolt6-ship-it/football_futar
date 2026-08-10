@@ -51,7 +51,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -59,55 +58,6 @@ import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
-
-// ==========================================
-// HIVATALOS STATPAL API MODELLEK (DOKUMENTÁCIÓ ALAPJÁN)
-// ==========================================
-data class PrematchOddsResponse(
-    @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer?
-)
-
-data class PrematchOddsContainer(
-    val updated: String?,
-    @SerializedName("updated_ts") val updatedTs: Long?,
-    val league: PrematchOddsLeague?
-)
-
-data class PrematchOddsLeague(
-    val id: String?,
-    val name: String?,
-    val country: String?,
-    val match: List<PrematchOddsMatch>?
-)
-
-data class PrematchOddsMatch(
-    @SerializedName("main_id") val mainId: String?,
-    @SerializedName("fallback_id_1") val fallbackId1: String?,
-    val date: String?,
-    val time: String?,
-    val home: StatPalTeam?,
-    val away: StatPalTeam?,
-    val odds: List<OddsCategory>?
-)
-
-data class OddsCategory(
-    val id: String?,
-    val name: String?,
-    val stop: String?,
-    val bookmaker: List<Bookmaker>?
-)
-
-data class Bookmaker(
-    val id: String?,
-    val name: String?,
-    val timestamp: String?,
-    val odd: List<OddValue>?
-)
-
-data class OddValue(
-    val name: String?,
-    val value: String?
-)
 
 // ==========================================
 // TÉMA SZÍNEK (SÖTÉT ÉS VILÁGOS MÓD)
@@ -1849,7 +1799,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -2397,7 +2347,6 @@ fun OddsTab(
         return
     }
 
-    // Hivatalos StatPal API Prematch Odds struktúra feldolgozása
     val oneXtwoCategory = prematchOddsMatch?.odds.orEmpty().find { 
         it.name.equals("1x2", ignoreCase = true) || it.name.equals("Fulltime Result", ignoreCase = true) 
     }
@@ -2408,7 +2357,6 @@ fun OddsTab(
     val apiDrawOdd = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value
     val apiAwayOdd = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value
 
-    // Intelligens fallback ha az adott meccshez az API-ban még nincsenek adatok
     val homeOddVal = apiHomeOdd ?: "1.95"
     val drawOddVal = apiDrawOdd ?: "3.40"
     val awayOddVal = apiAwayOdd ?: "3.75"
