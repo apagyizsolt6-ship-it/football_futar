@@ -318,7 +318,7 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
         try {
             val sportKey = getTheOddsApiSportKey(leagueName)
             val cacheKey = "the_odds_api_${sportKey}_all_markets"
-            var rawJson: String? = ApiCacheManager.get(cacheKey, 15 * 60 * 1000L) // 15 perces gyorsítótár
+            var rawJson: String? = ApiCacheManager.get(cacheKey, 15 * 60 * 1000L)
 
             if (rawJson == null) {
                 val url = URL("https://api.the-odds-api.com/v4/sports/$sportKey/odds/?apiKey=$apiKey&regions=eu&markets=h2h,totals,spreads")
@@ -716,11 +716,15 @@ fun getMatchTimestamp(match: StatPalMatch): Long {
     }
 }
 
+// ==========================================
+// MÓDOSÍTOTT IDŐRENDI SZŰRŐ (ÉLŐ MECCSEK KIZÁRVA)
+// ==========================================
 fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
+    // HA ÉLŐ A MECCS, KIZÁRJUK AZ IDŐSZŰRŐBŐL
+    if (isLiveMatch(match)) return false
+
     val dateStr = match.date ?: return false
     val timeStr = match.time ?: match.status ?: return false
-
-    if (isLiveMatch(match)) return true
 
     if (!timeStr.contains(":")) return false
 
@@ -735,6 +739,7 @@ fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
         val diffMs = matchMs - nowMs
         val diffHours = diffMs / (1000.0 * 60 * 60)
 
+        // Csak a még el nem kezdődött meccsek (0 és X óra között)
         diffHours in 0.0..(hours.toDouble())
     } catch (e: Exception) {
         false
@@ -1119,6 +1124,7 @@ fun MatchesListScreen(
     var isFavoriteLeaguesFilter by remember { mutableStateOf(false) }
     
     var selectedTimeFilterHours by remember { mutableStateOf<Int?>(null) }
+    var isFeaturedDismissed by remember { mutableStateOf(false) } // Banner elrejtés állapota
 
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -1169,8 +1175,10 @@ fun MatchesListScreen(
                 val newlyFinished = finishedMatchesMap.toMutableSet()
                 val newlyHt = halftimeMatchesMap.toMutableSet()
 
+                // ÉRTESÍTÉSI BEÁLLÍTÁSOK LEKÉRÉSE
                 val goalsEnabled = getNotificationPref(context, "notif_goals", true)
-                val cardsEnabled = getNotificationPref(context, "notif_cards", true)
+                val yellowCardsEnabled = getNotificationPref(context, "notif_yellow_cards", true)
+                val redCardsEnabled = getNotificationPref(context, "notif_red_cards", true)
                 val statusEnabled = getNotificationPref(context, "notif_status", true)
 
                 validLeagues.flatMap { it.match }.forEach { m ->
@@ -1216,14 +1224,19 @@ fun MatchesListScreen(
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
+                        // JAVÍTOTT LAP ÉRTESÍTÉSI LOGIKA (SZIGORÚAN KÜLÖN)
                         val events = m.events?.event.orEmpty()
                         events.forEach { event ->
                             val type = event.type?.lowercase() ?: ""
-                            if ((type.contains("yellow") || type.contains("red")) && cardsEnabled) {
+                            val isYellow = type.contains("yellow")
+                            val isRed = type.contains("red")
+
+                            val shouldNotify = (isYellow && yellowCardsEnabled) || (isRed && redCardsEnabled)
+
+                            if (shouldNotify) {
                                 val eventKey = "card_${id}_${event.minute}_${event.player}_${event.type}"
                                 if (!isEventAlreadyProcessed(context, eventKey)) {
                                     markEventAsProcessed(context, eventKey)
-                                    val isRed = type.contains("red")
                                     val cardIcon = if (isRed) "🟥" else "🟨"
                                     val cardName = if (isRed) "Piros lap" else "Sárga lap"
                                     val cardText = "$cardIcon $cardName (${event.minute}'): ${event.player} (${m.home?.name} - ${m.away?.name})"
@@ -1643,13 +1656,19 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                if (featuredMatchPair != null && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
+                // RANGADÓ BANNER ELREJTÉSI LEHETŐSÉGGEL
+                if (featuredMatchPair != null && !isFeaturedDismissed && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
                     item {
-                        FeaturedMatchBanner(featuredMatchPair.first, colors) {
-                            selectedMatchGlobal = featuredMatchPair.first
-                            selectedLeagueIdGlobal = featuredMatchPair.second
-                            navController.navigate("match_detail")
-                        }
+                        FeaturedMatchBanner(
+                            match = featuredMatchPair.first,
+                            colors = colors,
+                            onDismiss = { isFeaturedDismissed = true },
+                            onClick = {
+                                selectedMatchGlobal = featuredMatchPair.first
+                                selectedLeagueIdGlobal = featuredMatchPair.second
+                                navController.navigate("match_detail")
+                            }
+                        )
                     }
                 }
 
@@ -2070,6 +2089,7 @@ fun DateStrip(
 fun FeaturedMatchBanner(
     match: StatPalMatch,
     colors: AppColors,
+    onDismiss: () -> Unit,
     onClick: () -> Unit
 ) {
     Card(
@@ -2088,12 +2108,21 @@ fun FeaturedMatchBanner(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("🌟 A NAP RANGADÓJA", color = colors.accentYellow, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                Text(
-                    text = formatToLocalTime(match.date, match.status ?: match.time ?: ""),
-                    color = if (isLiveMatch(match)) colors.accentRed else colors.accentPrimary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = formatToLocalTime(match.date, match.status ?: match.time ?: ""),
+                        color = if (isLiveMatch(match)) colors.accentRed else colors.accentPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    // BEZÁRÓ GOMB (X)
+                    Text(
+                        text = "❌",
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable { onDismiss() }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -2414,7 +2443,8 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    // ODDSOK LETT AZ ELSŐ FÜL
+    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -2473,65 +2503,7 @@ fun MatchDetailScreen(
         if (apiKey.isBlank()) return@LaunchedEffect
 
         when (selectedTab) {
-            1 -> {
-                val cacheKey = "injuries_${matchId}"
-                val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
-                if (cached != null) {
-                    injuryMatchData = cached
-                } else if (injuryMatchData == null) {
-                    isLoadingInjuries = true
-                    coroutineScope.launch {
-                        try {
-                            val response = StatPalClient.service.getInjuriesAndSuspensions(apiKey)
-                            val allMatches = response.injuriesSuspensions?.league.orEmpty().flatMap { it.match.orEmpty() }
-                            val found = allMatches.find { it.mainId == match.mainId }
-                            if (found != null) {
-                                injuryMatchData = found
-                                ApiCacheManager.put(cacheKey, found)
-                            }
-                        } catch (_: Exception) {} finally {
-                            isLoadingInjuries = false
-                        }
-                    }
-                }
-            }
-            2 -> {
-                val cacheKey = "lineup_${matchId}"
-                val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
-                if (cached != null) {
-                    lineupData = cached
-                } else if (matchId.isNotBlank() && lineupData == null) {
-                    isLoadingLineup = true
-                    coroutineScope.launch {
-                        try {
-                            val response = StatPalClient.service.getTeamLineups(apiKey, matchId)
-                            lineupData = response
-                            ApiCacheManager.put(cacheKey, response)
-                        } catch (_: Exception) {} finally {
-                            isLoadingLineup = false
-                        }
-                    }
-                }
-            }
-            3 -> {
-                val cacheKey = "prediction_${matchId}"
-                val cached: PredictionData? = ApiCacheManager.get(cacheKey)
-                if (cached != null) {
-                    predictionData = cached
-                } else if (matchId.isNotBlank() && predictionData == null) {
-                    isLoadingPrediction = true
-                    coroutineScope.launch {
-                        try {
-                            val response = StatPalClient.service.getMatchPrediction(apiKey, matchId)
-                            predictionData = response.prediction
-                            response.prediction?.let { ApiCacheManager.put(cacheKey, it) }
-                        } catch (_: Exception) {} finally {
-                            isLoadingPrediction = false
-                        }
-                    }
-                }
-            }
-            5 -> {
+            0 -> { // ODDSOK (0-ás fül)
                 val lId = leagueId ?: ""
                 val cacheKey = "odds_${lId}_${matchId}"
                 val cached: PrematchOddsMatch? = ApiCacheManager.get(cacheKey)
@@ -2557,6 +2529,64 @@ fun MatchDetailScreen(
                             }
                         } catch (_: Exception) {} finally {
                             isLoadingOdds = false
+                        }
+                    }
+                }
+            }
+            2 -> { // HIÁNYZÓK
+                val cacheKey = "injuries_${matchId}"
+                val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    injuryMatchData = cached
+                } else if (injuryMatchData == null) {
+                    isLoadingInjuries = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getInjuriesAndSuspensions(apiKey)
+                            val allMatches = response.injuriesSuspensions?.league.orEmpty().flatMap { it.match.orEmpty() }
+                            val found = allMatches.find { it.mainId == match.mainId }
+                            if (found != null) {
+                                injuryMatchData = found
+                                ApiCacheManager.put(cacheKey, found)
+                            }
+                        } catch (_: Exception) {} finally {
+                            isLoadingInjuries = false
+                        }
+                    }
+                }
+            }
+            3 -> { // KEZDŐK
+                val cacheKey = "lineup_${matchId}"
+                val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    lineupData = cached
+                } else if (matchId.isNotBlank() && lineupData == null) {
+                    isLoadingLineup = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getTeamLineups(apiKey, matchId)
+                            lineupData = response
+                            ApiCacheManager.put(cacheKey, response)
+                        } catch (_: Exception) {} finally {
+                            isLoadingLineup = false
+                        }
+                    }
+                }
+            }
+            4 -> { // AI TIPP
+                val cacheKey = "prediction_${matchId}"
+                val cached: PredictionData? = ApiCacheManager.get(cacheKey)
+                if (cached != null) {
+                    predictionData = cached
+                } else if (matchId.isNotBlank() && predictionData == null) {
+                    isLoadingPrediction = true
+                    coroutineScope.launch {
+                        try {
+                            val response = StatPalClient.service.getMatchPrediction(apiKey, matchId)
+                            predictionData = response.prediction
+                            response.prediction?.let { ApiCacheManager.put(cacheKey, it) }
+                        } catch (_: Exception) {} finally {
+                            isLoadingPrediction = false
                         }
                     }
                 }
@@ -2652,7 +2682,18 @@ fun MatchDetailScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         when (selectedTab) {
-            0 -> {
+            0 -> { // ODDSOK AZ ELSŐ HETEN
+                OddsTab(
+                    match = match,
+                    leagueName = leagueId,
+                    prematchOddsMatch = prematchOddsMatch,
+                    isLoadingOdds = isLoadingOdds,
+                    betSlipItems = betSlipItems,
+                    colors = colors,
+                    onToggleOdds = onToggleOdds
+                )
+            }
+            1 -> { // H2H
                 if (isLoadingH2H) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2734,7 +2775,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            1 -> {
+            2 -> { // HIÁNYZÓK
                 if (isLoadingInjuries) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2761,7 +2802,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            2 -> {
+            3 -> { // KEZDŐK
                 if (isLoadingLineup) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2788,7 +2829,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            3 -> {
+            4 -> { // AI TIPP
                 if (isLoadingPrediction) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2841,19 +2882,8 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            4 -> {
-                StandingsTab(colors)
-            }
             5 -> {
-                OddsTab(
-                    match = match,
-                    leagueName = leagueId,
-                    prematchOddsMatch = prematchOddsMatch,
-                    isLoadingOdds = isLoadingOdds,
-                    betSlipItems = betSlipItems,
-                    colors = colors,
-                    onToggleOdds = onToggleOdds
-                )
+                StandingsTab(colors)
             }
             6 -> {
                 TimelineTab(match, colors)
@@ -2993,7 +3023,6 @@ fun OddsTab(
             isFetchingExternalOdds = true
             externalTried = true
 
-            // 1. THE ODDS API HÍVÁS (JAVÍTVA: A LEAGUE NAME PARAMÉTER HASZNÁLATÁVAL)
             if (theOddsApiKey.isNotBlank()) {
                 val res = fetchOddsFromTheOddsApi(theOddsApiKey, leagueName, homeName, awayName)
                 if (res != null) {
@@ -3001,7 +3030,6 @@ fun OddsTab(
                 }
             }
 
-            // 2. GEMINI FALLBACK HÍVÁS
             if (geminiKey.isNotBlank()) {
                 val gRes = fetchOddsFromGemini(geminiKey, homeName, awayName)
                 if (gRes != null) {
@@ -3463,8 +3491,10 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     var geminiKeyInput by remember { mutableStateOf(getGeminiApiKey(context)) }
     var theOddsKeyInput by remember { mutableStateOf(getTheOddsApiKey(context)) }
 
+    // KÜLÖN KAPCSOLÓK A SÁRGA ÉS PIROS LAPOKHOZ
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
-    var cardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_cards", true)) }
+    var yellowCardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_yellow_cards", true)) }
+    var redCardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_red_cards", true)) }
     var statusNotif by remember { mutableStateOf(getNotificationPref(context, "notif_status", true)) }
 
     Column(
@@ -3599,14 +3629,32 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🟨🟥 Sárga és Piros lapok", color = colors.textPrimary, fontSize = 13.sp)
+                    Text("🟨 Sárga lapok", color = colors.textPrimary, fontSize = 13.sp)
                     Switch(
-                        checked = cardsNotif,
+                        checked = yellowCardsNotif,
                         onCheckedChange = {
-                            cardsNotif = it
-                            setNotificationPref(context, "notif_cards", it)
+                            yellowCardsNotif = it
+                            setNotificationPref(context, "notif_yellow_cards", it)
                         },
-                        colors = SwitchDefaults.colors(checkedThumbColor = colors.accentPrimary)
+                        colors = SwitchDefaults.colors(checkedThumbColor = colors.accentYellow)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🟥 Piros lapok", color = colors.textPrimary, fontSize = 13.sp)
+                    Switch(
+                        checked = redCardsNotif,
+                        onCheckedChange = {
+                            redCardsNotif = it
+                            setNotificationPref(context, "notif_red_cards", it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = colors.accentRed)
                     )
                 }
 
