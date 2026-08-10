@@ -503,8 +503,9 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 fun isAllowedLeague(leagueName: String?): Boolean {
-    if (leagueName.isNullOrBlank()) return false
-    val nameLower = leagueName!!.lowercase()
+    val name = leagueName ?: return false
+    if (name.isBlank()) return false
+    val nameLower = name.lowercase()
 
     val forbiddenKeywords = listOf(
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
@@ -524,8 +525,9 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 }
 
 fun isTopLeague(leagueName: String?): Boolean {
-    if (leagueName.isNullOrBlank()) return false
-    val l = leagueName!!.uppercase()
+    val name = leagueName ?: return false
+    if (name.isBlank()) return false
+    val l = name.uppercase()
     val topKeywords = listOf(
         "NB I", "PREMIER LEAGUE", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1",
         "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CONFERENCE LEAGUE", "EREDIVISIE",
@@ -537,7 +539,7 @@ fun isTopLeague(leagueName: String?): Boolean {
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
 
-    val parts = leagueName!!.split(":")
+    val parts = leagueName.split(":")
     var countryPart = parts.getOrNull(0)?.trim() ?: ""
     var leaguePart = if (parts.size > 1) parts.getOrNull(1)?.trim() ?: "" else ""
 
@@ -561,15 +563,16 @@ fun translateLeagueName(leagueName: String?): String {
         "LATVIA" to "🇱🇻 LETTORSZÁG", "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG",
         "MEXICO" to "🇲🇽 MEXIKÓ", "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
         "NETHERLANDS" to "🇳🇱 HOLLANDIA", "NICARAGUA" to "🇳🇮 NICARAGUA", "NORTH MACEDONIA" to "🇲🇰 ÉSZAK-MAKEDÓNIA",
-        "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY", "PERU" to "🇵🇪 PERU",
-        "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA", "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA",
-        "RUSSIA" to "🇷🇺 OROSZORSZÁG", "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA",
-        "SERBIA" to "🇷🇸 SZERBIA", "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA",
-        "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA", "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SOUTH KOREA" to "🇰🇷 DÉL-KOREA",
-        "SPAIN" to "🇪🇸 SPANYOLORSZÁG", "SRI LANKA" to "🇱🇰 SRI LANKA", "SWEDEN" to "🇸🇪 SVÉDORSZÁG",
-        "SWITZERLAND" to "🇨🇭 SVÁJC", "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA",
-        "UNITED ARAB EMIRATES" to "🇦🇪 EGYESÜLT ARAB EMÍRSÉGEK", "URUGUAY" to "🇺🇾 URUGUAY",
-        "UZBEKISTAN" to "🇺🇿 ÜZBEGISZTÁN", "USA" to "🇺🇸 USA", "VENEZUELA" to "🇻🇪 VENEZUELA", "WORLD" to "🌐 VILÁG"
+        "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY",
+        "PERU" to "🇵🇪 PERU", "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA",
+        "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA", "RUSSIA" to "🇷🇺 OROSZORSZÁG",
+        "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA", "SERBIA" to "🇷🇸 SZERBIA",
+        "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA", "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA",
+        "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SOUTH KOREA" to "🇰🇷 DÉL-KOREA", "SPAIN" to "🇪🇸 SPANYOLORSZÁG",
+        "SRI LANKA" to "🇱🇰 SRI LANKA", "SWEDEN" to "🇸🇪 SVÉDORSZÁG", "SWITZERLAND" to "🇨🇭 SVÁJC",
+        "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA", "UNITED ARAB EMIRATES" to "🇦🇪 EGYESÜLT ARAB EMÍRSÉGEK",
+        "URUGUAY" to "🇺🇾 URUGUAY", "UZBEKISTAN" to "🇺🇿 ÜZBEGISZTÁN", "USA" to "🇺🇸 USA",
+        "VENEZUELA" to "🇻🇪 VENEZUELA", "WORLD" to "🌐 VILÁG"
     )
 
     for ((en, hu) in countryMap) {
@@ -584,7 +587,7 @@ fun translateLeagueName(leagueName: String?): String {
 
 fun translateStatus(status: String?): String {
     if (status.isNullOrBlank()) return ""
-    val s = status?.uppercase()?.trim() ?: ""
+    val s = status.uppercase().trim()
     return when {
         s == "FT" || s == "FINISHED" -> "VÉGE"
         s == "AET" -> "H.U. VÉGE"
@@ -594,24 +597,24 @@ fun translateStatus(status: String?): String {
         s.startsWith("POSTP") || s == "PPD" -> "ELHAL."
         s.startsWith("CANC") || s.startsWith("ABAND") -> "ELMARADT"
         s.startsWith("SUSP") || s.startsWith("INTERR") -> "FÉLBESZ."
-        else -> status ?: ""
+        else -> status
     }
 }
 
 fun translatePosition(pos: String?): String {
     if (pos.isNullOrBlank()) return ""
-    return when (pos?.lowercase()?.trim()) {
+    return when (pos.lowercase().trim()) {
         "goalkeeper" -> "Kapus"
         "defender" -> "Védő"
         "midfielder" -> "Középpályás"
         "attacker", "forward" -> "Támadó"
-        else -> pos ?: ""
+        else -> pos
     }
 }
 
 fun translateInjuryStatus(status: String?): String {
     if (status.isNullOrBlank()) return ""
-    var result: String = status ?: ""
+    var result: String = status
     val translations = mapOf(
         "hamstring injury" to "Combhajlító-sérülés",
         "knee injury" to "Térdsérülés",
@@ -631,18 +634,18 @@ fun translateInjuryStatus(status: String?): String {
 
 fun translateChoice(choice: String?): String {
     if (choice.isNullOrBlank()) return "-"
-    val c = choice?.trim() ?: ""
+    val c = choice.trim()
     return when {
         c.equals("Home win", ignoreCase = true) || c.equals("Home to win", ignoreCase = true) -> "Hazai győzelem"
         c.equals("Away win", ignoreCase = true) || c.equals("Away to win", ignoreCase = true) -> "Vendég győzelem"
         c.equals("Draw", ignoreCase = true) -> "Döntetlen"
-        else -> choice ?: "-"
+        else -> choice
     }
 }
 
 fun translateReasoning(text: String?): String {
     if (text.isNullOrBlank()) return "-"
-    return text ?: "-"
+    return text
 }
 
 // ==========================================
