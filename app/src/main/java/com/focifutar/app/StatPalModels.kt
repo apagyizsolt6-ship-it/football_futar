@@ -283,6 +283,11 @@ data class PrematchOddsLeague(
 
 data class PrematchOddsMatch(
     @SerializedName("main_id") val mainId: String? = null,
+    @SerializedName("fallback_id_1") val fallbackId1: String? = null,
+    @SerializedName("fallback_id_2") val fallbackId2: String? = null,
+    @SerializedName("fallback_id_3") val fallbackId3: String? = null,
+    val date: String? = null,
+    val time: String? = null,
     val home: StatPalTeam? = null,
     val away: StatPalTeam? = null,
     val odds: List<OddsCategory>? = emptyList()
