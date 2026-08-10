@@ -504,7 +504,7 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 
 fun isAllowedLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
-    val nameLower = leagueName.lowercase()
+    val nameLower = leagueName!!.lowercase()
 
     val forbiddenKeywords = listOf(
         "women", "női", "wom", "femenina", "feminina", "frauen", "ladies",
@@ -525,7 +525,7 @@ fun isAllowedLeague(leagueName: String?): Boolean {
 
 fun isTopLeague(leagueName: String?): Boolean {
     if (leagueName.isNullOrBlank()) return false
-    val l = leagueName.uppercase()
+    val l = leagueName!!.uppercase()
     val topKeywords = listOf(
         "NB I", "PREMIER LEAGUE", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1",
         "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CONFERENCE LEAGUE", "EREDIVISIE",
@@ -537,7 +537,7 @@ fun isTopLeague(leagueName: String?): Boolean {
 fun translateLeagueName(leagueName: String?): String {
     if (leagueName.isNullOrBlank()) return "ISMERETLEN BAJNOKSÁG"
 
-    val parts = leagueName?.split(":") ?: emptyList()
+    val parts = leagueName!!.split(":")
     var countryPart = parts.getOrNull(0)?.trim() ?: ""
     var leaguePart = if (parts.size > 1) parts.getOrNull(1)?.trim() ?: "" else ""
 
