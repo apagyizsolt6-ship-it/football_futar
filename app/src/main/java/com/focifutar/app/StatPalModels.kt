@@ -7,17 +7,9 @@ import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
 import java.lang.reflect.Type
 
-// ==========================================
-// RUGALMAS GSON KONVERTER A "MATCH" MEZŐHÖZ
-// ==========================================
 class MatchListDeserializer : JsonDeserializer<List<StatPalMatch>> {
-    override fun deserialize(
-        json: JsonElement?,
-        typeOfT: Type?,
-        context: JsonDeserializationContext?
-    ): List<StatPalMatch> {
+    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): List<StatPalMatch> {
         if (json == null || json.isJsonNull) return emptyList()
-
         val list = mutableListOf<StatPalMatch>()
         if (json.isJsonArray) {
             for (element in json.asJsonArray) {
@@ -32,17 +24,9 @@ class MatchListDeserializer : JsonDeserializer<List<StatPalMatch>> {
     }
 }
 
-// ==========================================
-// RUGALMAS GSON KONVERTER A "LEAGUE" MEZŐHÖZ
-// ==========================================
 class LeagueListDeserializer : JsonDeserializer<List<StatPalLeague>> {
-    override fun deserialize(
-        json: JsonElement?,
-        typeOfT: Type?,
-        context: JsonDeserializationContext?
-    ): List<StatPalLeague> {
+    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): List<StatPalLeague> {
         if (json == null || json.isJsonNull) return emptyList()
-
         val list = mutableListOf<StatPalLeague>()
         if (json.isJsonArray) {
             for (element in json.asJsonArray) {
@@ -57,32 +41,19 @@ class LeagueListDeserializer : JsonDeserializer<List<StatPalLeague>> {
     }
 }
 
-// ==========================================
-// RUGALMAS DESZERIALIZÁTOR A DINAMIKUS "matches_DD_MM_YYYY" GYÖKÉRHEZ
-// ==========================================
 class StatPalLiveMatchesResponseDeserializer : JsonDeserializer<StatPalLiveMatchesResponse> {
-    override fun deserialize(
-        json: JsonElement?,
-        typeOfT: Type?,
-        context: JsonDeserializationContext?
-    ): StatPalLiveMatchesResponse {
+    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): StatPalLiveMatchesResponse {
         if (json == null || !json.isJsonObject) return StatPalLiveMatchesResponse(null)
-
         val obj = json.asJsonObject
         val containerEntry = obj.entrySet().find { it.key.startsWith("matches_") } ?: obj.entrySet().firstOrNull()
-        
         var container: StatPalLiveMatchesContainer? = null
         if (containerEntry != null && containerEntry.value.isJsonObject) {
             container = context?.deserialize(containerEntry.value, StatPalLiveMatchesContainer::class.java)
         }
-
         return StatPalLiveMatchesResponse(liveMatches = container)
     }
 }
 
-// ==========================================
-// FŐ RESPONSE DOKUMENTUM
-// ==========================================
 @JsonAdapter(StatPalLiveMatchesResponseDeserializer::class)
 data class StatPalLiveMatchesResponse(
     val liveMatches: StatPalLiveMatchesContainer? = null
@@ -122,9 +93,6 @@ data class StatPalMatch(
     @SerializedName("match_context") val matchContext: StatPalContext? = null
 )
 
-// ==========================================
-// MECCS ESEMÉNYEK (TIMELINE)
-// ==========================================
 data class MatchEventsContainer(
     val event: List<MatchEventItem>? = emptyList()
 )
@@ -166,9 +134,6 @@ data class StatPalContext(
     val predictions: Boolean? = false
 )
 
-// ==========================================
-// H2H (EGYMÁS ELLENI)
-// ==========================================
 data class H2HResponse(
     @SerializedName("head_to_head") val headToHead: H2HData? = null
 )
@@ -189,9 +154,6 @@ data class H2HMatch(
     @SerializedName("team2_score") val team2Score: String? = null
 )
 
-// ==========================================
-// HIÁNYZÓK / SÉRÜLTEK
-// ==========================================
 data class InjuriesResponse(
     @SerializedName("injuries_suspensions") val injuriesSuspensions: InjuryLeagueContainer? = null
 )
@@ -229,9 +191,6 @@ data class InjuryPlayer(
     val status: String? = null
 )
 
-// ==========================================
-// KEZDŐCSAPATOK (LINEUP)
-// ==========================================
 data class StatPalLineupResponse(
     val home: LineupTeam? = null,
     val away: LineupTeam? = null
@@ -254,9 +213,6 @@ data class LineupPlayer(
     val position: String? = null
 )
 
-// ==========================================
-// PREDICTION (AI ELEMZÉS)
-// ==========================================
 data class PredictionResponse(
     val prediction: PredictionData? = null
 )
@@ -267,18 +223,40 @@ data class PredictionData(
 )
 
 // ==========================================
-// PREMATCH ODDS
+// BIZTONSÁGOS PREMATCH ODDS MODELLEK
 // ==========================================
+class PrematchOddsLeagueListDeserializer : JsonDeserializer<List<PrematchOddsLeague>> {
+    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): List<PrematchOddsLeague> {
+        if (json == null || json.isJsonNull) return emptyList()
+        val list = mutableListOf<PrematchOddsLeague>()
+        if (json.isJsonArray) {
+            for (element in json.asJsonArray) {
+                val item = context?.deserialize<PrematchOddsLeague>(element, PrematchOddsLeague::class.java)
+                if (item != null) list.add(item)
+            }
+        } else if (json.isJsonObject) {
+            val item = context?.deserialize<PrematchOddsLeague>(json.asJsonObject, PrematchOddsLeague::class.java)
+            if (item != null) list.add(item)
+        }
+        return list
+    }
+}
+
 data class StatPalPrematchOddsResponse(
     @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer? = null
 )
 
 data class PrematchOddsContainer(
-    val league: PrematchOddsLeague? = null
+    @JsonAdapter(PrematchOddsLeagueListDeserializer::class)
+    val league: List<PrematchOddsLeague>? = emptyList()
 )
 
 data class PrematchOddsLeague(
-    val match: List<PrematchOddsMatch>? = emptyList()
+    val id: String? = null,
+    val name: String? = null,
+    val country: String? = null,
+    @JsonAdapter(MatchListDeserializer::class)
+    @SerializedName("match") val match: List<PrematchOddsMatch> = emptyList()
 )
 
 data class PrematchOddsMatch(
