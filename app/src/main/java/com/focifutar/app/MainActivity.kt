@@ -247,7 +247,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 fun saveGeminiApiKey(context: Context, key: String) {
@@ -258,7 +258,7 @@ fun saveGeminiApiKey(context: Context, key: String) {
 
 fun getGeminiApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
+    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 // ==========================================
@@ -587,6 +587,7 @@ fun translateLeagueName(leagueName: String?): String {
     return if (leaguePart.isNotBlank()) "$countryPart: $leaguePart" else countryPart
 }
 
+// JAVÍTVA: Biztonságos null-kezelés a 250. és 261. sor környékén lévő hiba elkerülésére
 fun translateStatus(status: String?): String {
     val s = status?.uppercase()?.trim() ?: return ""
     return when {
