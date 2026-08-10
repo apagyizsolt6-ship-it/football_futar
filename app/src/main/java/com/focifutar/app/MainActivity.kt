@@ -974,14 +974,12 @@ fun MatchesListScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        // KÉT SOROS FEJLÉC ELHELYEZÉS (1. sor: Név + Egyenleg, 2. sor: Összes kezelőikon görgethetően)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 1. SOR: FOOTBALL FUTÁR ÉS VIRTUÁLIS EGYENLEG
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1018,7 +1016,6 @@ fun MatchesListScreen(
                 }
             }
 
-            // 2. SOR: ÖSSZES IKON ÉS GOMB GÖRGETHETŐ SORBAN (Így a beállítások ⚙️ is mindig látszik!)
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1205,7 +1202,9 @@ fun MatchesListScreen(
                             onTogglePin = {}
                         )
                     }
-                    items(favoriteMatchesList) { (match, leagueId) ->
+                    items(favoriteMatchesList) { pairItem ->
+                        val match = pairItem.first
+                        val leagueId = pairItem.second
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                         val flashColor = flashingMatchesState[matchId]
                         MatchRow(
@@ -1252,13 +1251,13 @@ fun MatchesListScreen(
                     }
 
                     if (!isCollapsed) {
-                        items(league.match) { match ->
-                            val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+                        items(league.match) { matchItem ->
+                            val matchId = matchItem.mainId ?: "${matchItem.home?.name}-${matchItem.away?.name}"
                             val isFav = favoriteIds.contains(matchId)
                             val flashColor = flashingMatchesState[matchId]
 
                             MatchRow(
-                                match,
+                                matchItem,
                                 isFav,
                                 flashColor,
                                 colors,
@@ -1267,7 +1266,7 @@ fun MatchesListScreen(
                                     favoriteIds = getFavoriteMatchIds(context)
                                 },
                                 {
-                                    selectedMatchGlobal = match
+                                    selectedMatchGlobal = matchItem
                                     selectedLeagueIdGlobal = league.id
                                     navController.navigate("match_detail")
                                 }
@@ -1431,7 +1430,9 @@ fun DateStrip(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(dateList.size) { index ->
-                val (label, cal) = dateList[index]
+                val pairItem = dateList[index]
+                val label = pairItem.first
+                val cal = pairItem.second
                 val isSelected = isSameDay(cal, selectedCalendar)
 
                 Box(
@@ -1817,7 +1818,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -1945,8 +1946,14 @@ fun MatchDetailScreen(
                     coroutineScope.launch {
                         try {
                             val response = StatPalClient.service.getPrematchOdds(lId, apiKey)
-                            val matchFound = response.prematchOdds?.league?.match.orEmpty().find { 
-                                it.mainId == matchId || it.fallbackId1 == matchId || (it.home?.name == match.home?.name && it.away?.name == match.away?.name)
+                            val allPrematchMatches = response.prematchOdds?.league.orEmpty().flatMap { it.match }
+                            val matchFound = allPrematchMatches.find { oddMatch ->
+                                oddMatch.mainId == matchId || 
+                                oddMatch.fallbackId1 == matchId || 
+                                oddMatch.fallbackId2 == matchId || 
+                                oddMatch.fallbackId3 == matchId || 
+                                (oddMatch.home?.name.equals(match.home?.name, ignoreCase = true) && 
+                                 oddMatch.away?.name.equals(match.away?.name, ignoreCase = true))
                             }
                             if (matchFound != null) {
                                 prematchOddsMatch = matchFound
