@@ -442,7 +442,7 @@ fun checkFuzzyMatch(s1: String, s2: String): Boolean {
 }
 
 // ==========================================
-// GEMINI WEB ODDS & SZELVÉNY FELISMERŐ ENGINE
+// GEMINI 3.6 FLASH INTERACTIONS REST API ENGINE
 // ==========================================
 data class GeminiMarketOdds(
     val home: String,
@@ -467,7 +467,7 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
             inputStream.close()
             if (originalBitmap == null) return@withContext null
 
-            // Kép optimalizálása (max 1280px-re méretezés a stabil hálózati küldéshez)
+            // Kép optimalizálása (max 1280px a stabil küldéshez)
             val maxDim = 1280
             val width = originalBitmap.width
             val height = originalBitmap.height
@@ -485,30 +485,30 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
             val imageBytes = outputStream.toByteArray()
             val base64Image = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
 
-            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            // Google Interactions API végpont
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/interactions")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("x-goog-api-key", apiKey)
             conn.doOutput = true
 
-            val promptText = "Elemezd ezt a szerencsejáték/Tippmix/sportfogadási szelvényt vagy képernyőképet! Keresd meg az összes fogadási eseményt. Minden eseményhez add meg: 1. 'matchTitle': A két csapat neve (Hazai vs Vendég formátumban). 2. 'choiceName': A kiválasztott tipp (pl. 'Over 2.5 gól', 'Mindkét csapat szerez gólt: Igen', '1 (Hazai)', 'X', '2'). 3. 'odds': A tipphez tartozó odds tizedestörtként (pl. 1.74, 2.20, 2.51)."
+            val promptText = "Elemezd ezt a szerencsejáték/Tippmix szelvényt! Keresd meg az összes fogadási eseményt. Minden eseményhez adj meg egy JSON tömböt: 'matchTitle' (Hazai vs Vendég), 'choiceName' (kiválasztott tipp), 'odds' (tizedestört odds). Kizárólag érvényes JSON tömbbel válaszolj!"
 
             val body = """
                 {
-                  "contents": [{
-                    "parts": [
-                      { "text": "$promptText" },
-                      {
-                        "inlineData": {
-                          "mimeType": "image/jpeg",
-                          "data": "$base64Image"
-                        }
+                  "model": "gemini-3.6-flash",
+                  "input": [
+                    { "type": "text", "text": "$promptText" },
+                    {
+                      "type": "image",
+                      "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": "$base64Image"
                       }
-                    ]
-                  }],
-                  "generationConfig": {
-                    "responseMimeType": "application/json"
-                  }
+                    }
+                  ]
                 }
             """.trimIndent()
 
@@ -517,35 +517,38 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
             if (conn.responseCode == 200) {
                 val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val jsonObj = JsonParser().parse(responseStr).asJsonObject
-                val candidates = jsonObj.getAsJsonArray("candidates")
+                val steps = jsonObj.getAsJsonArray("steps") ?: return@withContext null
 
-                if (candidates != null && candidates.size() > 0) {
-                    val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
-                    val parts = content.getAsJsonArray("parts")
-
-                    var rawText = ""
-                    for (i in 0 until parts.size()) {
-                        val partObj = parts.get(i).asJsonObject
-                        if (partObj.has("text")) {
-                            rawText += partObj.get("text").asString
+                var rawText = ""
+                for (i in 0 until steps.size()) {
+                    val step = steps.get(i).asJsonObject
+                    if (step.get("type")?.asString == "model_output") {
+                        val contents = step.getAsJsonArray("content") ?: continue
+                        for (c in 0 until contents.size()) {
+                            val item = contents.get(c).asJsonObject
+                            if (item.get("type")?.asString == "text") {
+                                rawText += item.get("text")?.asString ?: ""
+                            }
                         }
                     }
-
-                    val jsonElement = JsonParser().parse(rawText.trim())
-                    val jsonArray = if (jsonElement.isJsonArray) jsonElement.asJsonArray else return@withContext null
-                    val resultList = mutableListOf<BetSlipItem>()
-
-                    for (i in 0 until jsonArray.size()) {
-                        val itemObj = jsonArray.get(i).asJsonObject
-                        val matchTitle = itemObj.get("matchTitle")?.asString ?: "Szelvény meccs"
-                        val choiceName = itemObj.get("choiceName")?.asString ?: "Tipp"
-                        val odds = itemObj.get("odds")?.asDouble ?: 1.80
-                        val matchId = "scanned_${UUID.randomUUID().toString().take(6)}"
-
-                        resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
-                    }
-                    return@withContext resultList
                 }
+
+                val jsonMatcher = Regex("\\[[\\s\\S]*?\\]").find(rawText)
+                val jsonString = jsonMatcher?.value ?: rawText.trim()
+
+                val jsonArray = JsonParser().parse(jsonString).asJsonArray
+                val resultList = mutableListOf<BetSlipItem>()
+
+                for (i in 0 until jsonArray.size()) {
+                    val itemObj = jsonArray.get(i).asJsonObject
+                    val matchTitle = itemObj.get("matchTitle")?.asString ?: "Szelvény meccs"
+                    val choiceName = itemObj.get("choiceName")?.asString ?: "Tipp"
+                    val odds = itemObj.get("odds")?.asDouble ?: 1.80
+                    val matchId = "scanned_${UUID.randomUUID().toString().take(6)}"
+
+                    resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
+                }
+                return@withContext resultList
             }
             null
         } catch (e: Exception) {
@@ -558,65 +561,64 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
 suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): GeminiMarketOdds? {
     return withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/interactions")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("x-goog-api-key", apiKey)
             conn.doOutput = true
 
             val prompt = "Keresd meg az interneten a $home vs $away meccs legfrissebb fogadási oddsait (1X2, Gól-gól, Over/Under 2.5, Félidő 1X2). " +
-                    "A válaszodban KIZÁRÓLAG egyetlen valid JSON objektum szerepeljen, semmilyen más szöveg! " +
-                    "Formátum: {\"home\":\"1.80\",\"draw\":\"3.40\",\"away\":\"3.90\",\"bttsYes\":\"1.75\",\"bttsNo\":\"1.95\",\"over25\":\"1.85\",\"under25\":\"1.90\",\"bttsOver25\":\"2.30\",\"ht1\":\"2.40\",\"htX\":\"2.10\",\"ht2\":\"3.10\",\"redCardYes\":\"3.50\"}"
+                    "A válaszodban KIZÁRÓLAG egyetlen valid JSON objektum szerepeljen: " +
+                    "{\"home\":\"1.80\",\"draw\":\"3.40\",\"away\":\"3.90\",\"bttsYes\":\"1.75\",\"bttsNo\":\"1.95\",\"over25\":\"1.85\",\"under25\":\"1.90\",\"bttsOver25\":\"2.30\",\"ht1\":\"2.40\",\"htX\":\"2.10\",\"ht2\":\"3.10\",\"redCardYes\":\"3.50\"}"
 
             val body = """
                 {
-                  "contents": [{
-                    "parts": [{ "text": "$prompt" }]
-                  }],
-                  "tools": [{ "googleSearch": {} }]
+                  "model": "gemini-3.6-flash",
+                  "input": "$prompt"
                 }
             """.trimIndent()
 
             conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
 
-            val responseCode = conn.responseCode
-            if (responseCode == 200) {
+            if (conn.responseCode == 200) {
                 val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val jsonObj = JsonParser().parse(responseStr).asJsonObject
-                val candidates = jsonObj.getAsJsonArray("candidates")
+                val steps = jsonObj.getAsJsonArray("steps") ?: return@withContext null
 
-                if (candidates != null && candidates.size() > 0) {
-                    val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
-                    val parts = content.getAsJsonArray("parts")
-
-                    var rawText = ""
-                    for (i in 0 until parts.size()) {
-                        val partObj = parts.get(i).asJsonObject
-                        if (partObj.has("text")) {
-                            rawText += partObj.get("text").asString + "\n"
+                var rawText = ""
+                for (i in 0 until steps.size()) {
+                    val step = steps.get(i).asJsonObject
+                    if (step.get("type")?.asString == "model_output") {
+                        val contents = step.getAsJsonArray("content") ?: continue
+                        for (c in 0 until contents.size()) {
+                            val item = contents.get(c).asJsonObject
+                            if (item.get("type")?.asString == "text") {
+                                rawText += item.get("text")?.asString ?: ""
+                            }
                         }
                     }
+                }
 
-                    val jsonMatcher = Regex("\\{[\\s\\S]*?\\}").find(rawText)
-                    val jsonString = jsonMatcher?.value
+                val jsonMatcher = Regex("\\{[\\s\\S]*?\\}").find(rawText)
+                val jsonString = jsonMatcher?.value
 
-                    if (!jsonString.isNullOrBlank()) {
-                        val oddsObj = JsonParser().parse(jsonString).asJsonObject
-                        return@withContext GeminiMarketOdds(
-                            home = oddsObj.get("home")?.asString ?: "1.95",
-                            draw = oddsObj.get("draw")?.asString ?: "3.40",
-                            away = oddsObj.get("away")?.asString ?: "3.75",
-                            bttsYes = oddsObj.get("bttsYes")?.asString ?: "1.75",
-                            bttsNo = oddsObj.get("bttsNo")?.asString ?: "1.95",
-                            over25 = oddsObj.get("over25")?.asString ?: "1.85",
-                            under25 = oddsObj.get("under25")?.asString ?: "1.90",
-                            bttsOver25 = oddsObj.get("bttsOver25")?.asString ?: "2.35",
-                            ht1 = oddsObj.get("ht1")?.asString ?: "2.40",
-                            htX = oddsObj.get("htX")?.asString ?: "2.10",
-                            ht2 = oddsObj.get("ht2")?.asString ?: "3.10",
-                            redCardYes = oddsObj.get("redCardYes")?.asString ?: "3.50"
-                        )
-                    }
+                if (!jsonString.isNullOrBlank()) {
+                    val oddsObj = JsonParser().parse(jsonString).asJsonObject
+                    return@withContext GeminiMarketOdds(
+                        home = oddsObj.get("home")?.asString ?: "1.95",
+                        draw = oddsObj.get("draw")?.asString ?: "3.40",
+                        away = oddsObj.get("away")?.asString ?: "3.75",
+                        bttsYes = oddsObj.get("bttsYes")?.asString ?: "1.75",
+                        bttsNo = oddsObj.get("bttsNo")?.asString ?: "1.95",
+                        over25 = oddsObj.get("over25")?.asString ?: "1.85",
+                        under25 = oddsObj.get("under25")?.asString ?: "1.90",
+                        bttsOver25 = oddsObj.get("bttsOver25")?.asString ?: "2.35",
+                        ht1 = oddsObj.get("ht1")?.asString ?: "2.40",
+                        htX = oddsObj.get("htX")?.asString ?: "2.10",
+                        ht2 = oddsObj.get("ht2")?.asString ?: "3.10",
+                        redCardYes = oddsObj.get("redCardYes")?.asString ?: "3.50"
+                    )
                 }
             }
             null
@@ -1252,7 +1254,7 @@ fun MatchesListScreen(
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
-    // SZELVÉNY BEOLVASÓ LAUNCHER
+    // GEMINI 3.6 FLASH SZELVÉNY BEOLVASÓ LAUNCHER
     val ticketImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val geminiKey = getGeminiApiKey(context)
@@ -1578,7 +1580,6 @@ fun MatchesListScreen(
                     }
                 }
 
-                // AI SZELVÉNY BEOLVASÓ GOMB
                 item {
                     Box(
                         modifier = Modifier
@@ -3188,7 +3189,7 @@ fun OddsTab(
                 CircularProgressIndicator(color = colors.accentPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (theOddsApiKey.isNotBlank()) "🎯 Az összes fogadási piac gyűjtése..." else "🤖 Odds adatok gyűjtése...",
+                    text = if (theOddsApiKey.isNotBlank()) "🎯 Az összes fogadási piac gyűjtése..." else "🤖 Gemini 3.6 Flash Odds gyűjtése...",
                     color = colors.textMuted,
                     fontSize = 12.sp
                 )
@@ -3217,7 +3218,7 @@ fun OddsTab(
     val bookmakerName = when {
         !apiHomeOdd.isNullOrBlank() -> bookmaker?.name ?: "StatPal Odds"
         oddsApiResult != null -> oddsApiResult?.bookmakerName ?: "🎯 The Odds API (Teljes Piac)"
-        geminiOdds != null -> "🤖 Gemini Web Odds"
+        geminiOdds != null -> "🤖 Gemini 3.6 Flash Web Odds"
         else -> "⚡ Futár Smart Odds (Okos becslés)"
     }
 
@@ -3749,7 +3750,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Gemini API Kulcs (Szelvény olvasóhoz & Web Odds-hoz)",
+            text = "Gemini API Kulcs (Gemini 3.6 Flash Interactions Engine)",
             color = colors.accentPrimary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
