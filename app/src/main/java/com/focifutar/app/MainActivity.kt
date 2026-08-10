@@ -118,6 +118,12 @@ data class SavedBet(
     var isPaidOut: Boolean = false
 )
 
+data class FlatMatchItem(
+    val match: StatPalMatch,
+    val league: StatPalLeague,
+    val showHeader: Boolean
+)
+
 fun isDarkModeSaved(context: Context): Boolean {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getBoolean("is_dark_mode", true)
@@ -262,7 +268,7 @@ fun getGeminiApiKey(context: Context): String {
 }
 
 // ==========================================
-// GEMINI WEB ODDS LEKÉRDEZÉS (BŐVÍTETT PIACOK)
+// GEMINI WEB ODDS LEKÉRDEZÉS
 // ==========================================
 data class GeminiMarketOdds(
     val home: String,
@@ -511,13 +517,36 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
 }
 
 // ==========================================
-// ÚJ TIPPMIXPRO STÍLUSÚ KEZDÉSI IDŐ SZŰRŐ MOTOR
+// PONTOS IDŐBÉLYEG SZÁMÍTÓ MECCS RENDEZÉSHEZ
+// ==========================================
+fun getMatchTimestamp(match: StatPalMatch): Long {
+    if (isLiveMatch(match)) return 0L
+
+    val statusStr = match.status?.trim()?.uppercase() ?: ""
+    val timeStr = match.time?.trim()?.uppercase() ?: ""
+    val rawTime = if (timeStr.contains(":")) timeStr else if (statusStr.contains(":")) statusStr else ""
+
+    if (rawTime.isBlank()) return Long.MAX_VALUE
+
+    return try {
+        val datePart = if (!match.date.isNullOrBlank()) match.date else "01.01.2026"
+        val utcFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val parsed = utcFormat.parse("$datePart $rawTime")
+        parsed?.time ?: Long.MAX_VALUE
+    } catch (e: Exception) {
+        Long.MAX_VALUE
+    }
+}
+
+// ==========================================
+// IDŐABLAK SZŰRŐ MOTOR (<3h, <6h, <9h)
 // ==========================================
 fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
     val dateStr = match.date ?: return false
     val timeStr = match.time ?: match.status ?: return false
 
-    // Az éppen zajló élő meccseket is belevesszük az időablakba
     if (isLiveMatch(match)) return true
 
     if (!timeStr.contains(":")) return false
@@ -533,7 +562,6 @@ fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
         val diffMs = matchMs - nowMs
         val diffHours = diffMs / (1000.0 * 60 * 60)
 
-        // A meccs a következő X órán belül kezdődik
         diffHours in 0.0..(hours.toDouble())
     } catch (e: Exception) {
         false
@@ -598,7 +626,7 @@ fun translateLeagueName(leagueName: String?): String {
         "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "GUATEMALA" to "🇬🇹 GUATEMALA", "HONDURAS" to "🇭🇳 HONDURAS",
         "HUNGARY" to "🇭🇺 MAGYARORSZÁG", "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA",
         "IRAN" to "🇮🇷 IRÁN", "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL",
-        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰ℤ KAZAHSZTÁN",
+        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN",
         "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN", "LATVIA" to "🇱🇻 LETTORSZÁG",
         "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG", "MEXICO" to "🇲🇽 MEXIKÓ",
         "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
@@ -685,7 +713,7 @@ fun translateReasoning(text: String?): String {
 }
 
 // ==========================================
-// FUTÁR AI ALGORITMUS (OKOS HELYETTESÍTŐ MOTOR)
+// FUTÁR AI ALGORITMUS
 // ==========================================
 fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
     val status = (match.status ?: match.time ?: "").uppercase()
@@ -917,7 +945,7 @@ fun MatchesListScreen(
     var isTopLeaguesFilter by remember { mutableStateOf(false) }
     var isFavoriteLeaguesFilter by remember { mutableStateOf(false) }
     
-    // ÚJ: IDŐABLAK SZŰRŐ ÁLLAPOT (3h, 6h, 9h)
+    // IDŐABLAK SZŰRŐ ÁLLAPOT (3h, 6h, 9h)
     var selectedTimeFilterHours by remember { mutableStateOf<Int?>(null) }
 
     var isSearchOpen by remember { mutableStateOf(false) }
@@ -1073,7 +1101,57 @@ fun MatchesListScreen(
         leagues.sumOf { league -> league.match.count { isLiveMatch(it) } }
     }
 
-    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, selectedTimeFilterHours, searchQuery, favoriteLeagueKeys) {
+    // ==========================================
+    // EREDMENYEK.COM STÍLUSÚ IDŐRENDI FEED LISTA
+    // ==========================================
+    val flatChronologicalList = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, selectedTimeFilterHours, searchQuery, favoriteLeagueKeys) {
+        if (selectedTimeFilterHours == null) return@remember emptyList<FlatMatchItem>()
+
+        val allMatchesWithLeague = mutableListOf<Pair<StatPalMatch, StatPalLeague>>()
+
+        leagues.forEach { league ->
+            val leagueKey = league.id ?: league.name ?: ""
+            if (!isFavoriteLeaguesFilter || favoriteLeagueKeys.contains(leagueKey)) {
+                if (!isTopLeaguesFilter || isTopLeague(league.name)) {
+                    league.match.forEach { match ->
+                        var keep = true
+                        if (isOnlyLiveFilter && !isLiveMatch(match)) keep = false
+                        if (selectedTimeFilterHours != null && !isMatchWithinHours(match, selectedTimeFilterHours!!)) keep = false
+                        if (searchQuery.isNotBlank()) {
+                            val q = searchQuery.lowercase().trim()
+                            val matchInQ = (match.home?.name?.lowercase()?.contains(q) == true) ||
+                                           (match.away?.name?.lowercase()?.contains(q) == true) ||
+                                           (league.name?.lowercase()?.contains(q) == true)
+                            if (!matchInQ) keep = false
+                        }
+                        if (keep) {
+                            allMatchesWithLeague.add(Pair(match, league))
+                        }
+                    }
+                }
+            }
+        }
+
+        // SZIGORÚ IDŐRENDI RENDEZÉS
+        val sortedList = allMatchesWithLeague.sortedBy { getMatchTimestamp(it.first) }
+
+        val result = mutableListOf<FlatMatchItem>()
+        var prevLeagueKey: String? = null
+
+        sortedList.forEach { (match, league) ->
+            val leagueKey = league.id ?: league.name ?: ""
+            val showHeader = (leagueKey != prevLeagueKey)
+            prevLeagueKey = leagueKey
+            result.add(FlatMatchItem(match, league, showHeader))
+        }
+
+        result
+    }
+
+    // Hagyományos csoportosított bajnokság lista (amikor az időszűrő nincs bekapcsolva)
+    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, searchQuery, favoriteLeagueKeys) {
+        if (selectedTimeFilterHours != null) return@remember emptyList<StatPalLeague>()
+
         val baseList = leagues.mapNotNull { league ->
             val leagueKey = league.id ?: league.name ?: ""
             if (isFavoriteLeaguesFilter && !favoriteLeagueKeys.contains(leagueKey)) {
@@ -1082,20 +1160,15 @@ fun MatchesListScreen(
 
             val matches = league.match
             val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
-            
-            // IDŐABLAK SZŰRÉS (3h, 6h, 9h)
-            val matchesAfterTime = if (selectedTimeFilterHours != null) {
-                matchesAfterLive.filter { isMatchWithinHours(it, selectedTimeFilterHours!!) }
-            } else matchesAfterLive
 
             val matchesAfterSearch = if (searchQuery.isNotBlank()) {
                 val q = searchQuery.lowercase().trim()
-                matchesAfterTime.filter { match ->
+                matchesAfterLive.filter { match ->
                     (match.home?.name?.lowercase()?.contains(q) == true) ||
                     (match.away?.name?.lowercase()?.contains(q) == true) ||
                     (league.name?.lowercase()?.contains(q) == true)
                 }
-            } else matchesAfterTime
+            } else matchesAfterLive
 
             if (matchesAfterSearch.isNotEmpty()) {
                 league.copy(match = matchesAfterSearch)
@@ -1450,33 +1523,38 @@ fun MatchesListScreen(
                     }
                 }
 
-                filteredLeagues.forEach { league ->
-                    val leagueKey = league.id ?: league.name ?: ""
-                    val isCollapsed = collapsedLeagueIds.contains(leagueKey)
-                    val isPinned = favoriteLeagueKeys.contains(leagueKey)
+                // ==========================================
+                // NEZET 1: PONTOS IDŐRENDI EREDMENYEK.COM FEED (<3h, <6h, <9h)
+                // ==========================================
+                if (selectedTimeFilterHours != null) {
+                    items(flatChronologicalList) { item ->
+                        val league = item.league
+                        val matchItem = item.match
+                        val leagueKey = league.id ?: league.name ?: ""
+                        val isCollapsed = collapsedLeagueIds.contains(leagueKey)
+                        val isPinned = favoriteLeagueKeys.contains(leagueKey)
 
-                    item {
-                        LeagueHeader(
-                            title = translateLeagueName(league.name),
-                            isCollapsed = isCollapsed,
-                            isPinned = isPinned,
-                            colors = colors,
-                            onToggle = {
-                                collapsedLeagueIds = if (isCollapsed) {
-                                    collapsedLeagueIds - leagueKey
-                                } else {
-                                    collapsedLeagueIds + leagueKey
+                        if (item.showHeader) {
+                            LeagueHeader(
+                                title = translateLeagueName(league.name),
+                                isCollapsed = isCollapsed,
+                                isPinned = isPinned,
+                                colors = colors,
+                                onToggle = {
+                                    collapsedLeagueIds = if (isCollapsed) {
+                                        collapsedLeagueIds - leagueKey
+                                    } else {
+                                        collapsedLeagueIds + leagueKey
+                                    }
+                                },
+                                onTogglePin = {
+                                    toggleFavoriteLeague(context, leagueKey)
+                                    favoriteLeagueKeys = getFavoriteLeagueIds(context)
                                 }
-                            },
-                            onTogglePin = {
-                                toggleFavoriteLeague(context, leagueKey)
-                                favoriteLeagueKeys = getFavoriteLeagueIds(context)
-                            }
-                        )
-                    }
+                            )
+                        }
 
-                    if (!isCollapsed) {
-                        items(league.match) { matchItem ->
+                        if (!isCollapsed) {
                             val matchId = matchItem.mainId ?: "${matchItem.home?.name}-${matchItem.away?.name}"
                             val isFav = favoriteIds.contains(matchId)
                             val flashColor = flashingMatchesState[matchId]
@@ -1496,6 +1574,59 @@ fun MatchesListScreen(
                                     navController.navigate("match_detail")
                                 }
                             )
+                        }
+                    }
+                } else {
+                    // ==========================================
+                    // NEZET 2: NORMÁL BAJNOKSÁG SZERINT CSOPORTOSÍTOTT NÉZET
+                    // ==========================================
+                    filteredLeagues.forEach { league ->
+                        val leagueKey = league.id ?: league.name ?: ""
+                        val isCollapsed = collapsedLeagueIds.contains(leagueKey)
+                        val isPinned = favoriteLeagueKeys.contains(leagueKey)
+
+                        item {
+                            LeagueHeader(
+                                title = translateLeagueName(league.name),
+                                isCollapsed = isCollapsed,
+                                isPinned = isPinned,
+                                colors = colors,
+                                onToggle = {
+                                    collapsedLeagueIds = if (isCollapsed) {
+                                        collapsedLeagueIds - leagueKey
+                                    } else {
+                                        collapsedLeagueIds + leagueKey
+                                    }
+                                },
+                                onTogglePin = {
+                                    toggleFavoriteLeague(context, leagueKey)
+                                    favoriteLeagueKeys = getFavoriteLeagueIds(context)
+                                }
+                            )
+                        }
+
+                        if (!isCollapsed) {
+                            items(league.match) { matchItem ->
+                                val matchId = matchItem.mainId ?: "${matchItem.home?.name}-${matchItem.away?.name}"
+                                val isFav = favoriteIds.contains(matchId)
+                                val flashColor = flashingMatchesState[matchId]
+
+                                MatchRow(
+                                    matchItem,
+                                    isFav,
+                                    flashColor,
+                                    colors,
+                                    {
+                                        toggleFavoriteMatch(context, matchId)
+                                        favoriteIds = getFavoriteMatchIds(context)
+                                    },
+                                    {
+                                        selectedMatchGlobal = matchItem
+                                        selectedLeagueIdGlobal = league.id
+                                        navController.navigate("match_detail")
+                                    }
+                                )
+                            }
                         }
                     }
                 }
