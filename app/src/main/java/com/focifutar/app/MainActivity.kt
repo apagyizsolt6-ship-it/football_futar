@@ -7,12 +7,15 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -436,7 +439,7 @@ fun checkFuzzyMatch(s1: String, s2: String): Boolean {
 }
 
 // ==========================================
-// GEMINI WEB ODDS KINYERŐ (REGEX)
+// GEMINI WEB ODDS & SZELVÉNY FELISMERŐ ENGINE
 // ==========================================
 data class GeminiMarketOdds(
     val home: String,
@@ -452,6 +455,91 @@ data class GeminiMarketOdds(
     val ht2: String,
     val redCardYes: String
 )
+
+fun uriToBase64(context: Context, uri: Uri): String? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val bytes = inputStream.readBytes()
+        inputStream.close()
+        android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: String): List<BetSlipItem>? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val base64Image = uriToBase64(context, uri) ?: return@withContext null
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+
+            val promptText = "Elemezd ezt a fogadási szelvényt vagy képernyőképet! Húzd ki az összes mérkőzés nevét (Hazai vs Vendég formátumban), a kiválasztott tippet (pl. 1, X, 2, Over 2.5, GG) és a hozzá tartozó odds-ot. A válaszodban KIZÁRÓLAG egyetlen valid JSON tömb szerepeljen, semmilyen más szöveg! Formátum: [{\"matchTitle\":\"Arsenal vs Chelsea\",\"choiceName\":\"1 (Arsenal)\",\"odds\":1.85}]"
+
+            val body = """
+                {
+                  "contents": [{
+                    "parts": [
+                      { "text": "$promptText" },
+                      {
+                        "inlineData": {
+                          "mimeType": "image/jpeg",
+                          "data": "$base64Image"
+                        }
+                      }
+                    ]
+                  }]
+                }
+            """.trimIndent()
+
+            conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
+
+            if (conn.responseCode == 200) {
+                val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonObj = JsonParser().parse(responseStr).asJsonObject
+                val candidates = jsonObj.getAsJsonArray("candidates")
+
+                if (candidates != null && candidates.size() > 0) {
+                    val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
+                    val parts = content.getAsJsonArray("parts")
+
+                    var rawText = ""
+                    for (i in 0 until parts.size()) {
+                        val partObj = parts.get(i).asJsonObject
+                        if (partObj.has("text")) {
+                            rawText += partObj.get("text").asString
+                        }
+                    }
+
+                    val jsonMatcher = Regex("\\[[\\s\\S]*?\\]").find(rawText)
+                    val jsonString = jsonMatcher?.value
+
+                    if (!jsonString.isNullOrBlank()) {
+                        val jsonArray = JsonParser().parse(jsonString).asJsonArray
+                        val resultList = mutableListOf<BetSlipItem>()
+
+                        for (i in 0 until jsonArray.size()) {
+                            val itemObj = jsonArray.get(i).asJsonObject
+                            val matchTitle = itemObj.get("matchTitle")?.asString ?: "Szelvény meccs"
+                            val choiceName = itemObj.get("choiceName")?.asString ?: "Tipp"
+                            val odds = itemObj.get("odds")?.asDouble ?: 1.80
+                            val matchId = "scanned_${UUID.randomUUID().toString().take(6)}"
+
+                            resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
+                        }
+                        return@withContext resultList
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
 
 suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): GeminiMarketOdds? {
     return withContext(Dispatchers.IO) {
@@ -716,11 +804,7 @@ fun getMatchTimestamp(match: StatPalMatch): Long {
     }
 }
 
-// ==========================================
-// MÓDOSÍTOTT IDŐRENDI SZŰRŐ (ÉLŐ MECCSEK KIZÁRVA)
-// ==========================================
 fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
-    // HA ÉLŐ A MECCS, KIZÁRJUK AZ IDŐSZŰRŐBŐL
     if (isLiveMatch(match)) return false
 
     val dateStr = match.date ?: return false
@@ -739,7 +823,6 @@ fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
         val diffMs = matchMs - nowMs
         val diffHours = diffMs / (1000.0 * 60 * 60)
 
-        // Csak a még el nem kezdődött meccsek (0 és X óra között)
         diffHours in 0.0..(hours.toDouble())
     } catch (e: Exception) {
         false
@@ -1029,10 +1112,18 @@ class MainActivity : ComponentActivity() {
                 Box(modifier = Modifier.fillMaxSize()) {
                     NavHost(navController = navController, startDestination = "matches_list") {
                         composable("matches_list") {
-                            MatchesListScreen(navController, isDarkMode, colors) { newMode ->
-                                isDarkMode = newMode
-                                saveDarkMode(context, newMode)
-                            }
+                            MatchesListScreen(
+                                navController = navController,
+                                isDarkMode = isDarkMode,
+                                colors = colors,
+                                onToggleDarkMode = { newMode ->
+                                    isDarkMode = newMode
+                                    saveDarkMode(context, newMode)
+                                },
+                                onScanTicketItems = { scannedItems ->
+                                    betSlipItems = betSlipItems + scannedItems
+                                }
+                            )
                         }
                         composable("api_settings") {
                             ApiSettingsScreen(navController, colors)
@@ -1098,6 +1189,9 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         Toast.makeText(context, "Nincs elég virtuális egyenleged!", Toast.LENGTH_SHORT).show()
                                     }
+                                },
+                                onScanTicketItems = { scannedItems ->
+                                    betSlipItems = betSlipItems + scannedItems
                                 }
                             )
                         }
@@ -1113,7 +1207,8 @@ fun MatchesListScreen(
     navController: NavController,
     isDarkMode: Boolean,
     colors: AppColors,
-    onToggleDarkMode: (Boolean) -> Unit
+    onToggleDarkMode: (Boolean) -> Unit,
+    onScanTicketItems: (List<BetSlipItem>) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1124,7 +1219,7 @@ fun MatchesListScreen(
     var isFavoriteLeaguesFilter by remember { mutableStateOf(false) }
     
     var selectedTimeFilterHours by remember { mutableStateOf<Int?>(null) }
-    var isFeaturedDismissed by remember { mutableStateOf(false) } // Banner elrejtés állapota
+    var isFeaturedDismissed by remember { mutableStateOf(false) }
 
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -1135,12 +1230,35 @@ fun MatchesListScreen(
     var leagues by remember { mutableStateOf<List<StatPalLeague>>(emptyList()) }
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
+    var isScanningTicket by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
+
+    // SZELVÉNY BEOLVASÓ LAUNCHER
+    val ticketImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val geminiKey = getGeminiApiKey(context)
+            if (geminiKey.isBlank()) {
+                Toast.makeText(context, "Kérlek adod meg a Gemini API kulcsodat a Beállításokban (⚙️) a képfelismeréshez!", Toast.LENGTH_LONG).show()
+            } else {
+                isScanningTicket = true
+                coroutineScope.launch {
+                    val scanned = processTicketImageWithGemini(context, uri, geminiKey)
+                    isScanningTicket = false
+                    if (!scanned.isNullOrEmpty()) {
+                        onScanTicketItems(scanned)
+                        Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt. Próbáld újra egy tisztább képpel!", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
@@ -1175,7 +1293,6 @@ fun MatchesListScreen(
                 val newlyFinished = finishedMatchesMap.toMutableSet()
                 val newlyHt = halftimeMatchesMap.toMutableSet()
 
-                // ÉRTESÍTÉSI BEÁLLÍTÁSOK LEKÉRÉSE
                 val goalsEnabled = getNotificationPref(context, "notif_goals", true)
                 val yellowCardsEnabled = getNotificationPref(context, "notif_yellow_cards", true)
                 val redCardsEnabled = getNotificationPref(context, "notif_red_cards", true)
@@ -1224,7 +1341,6 @@ fun MatchesListScreen(
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
-                        // JAVÍTOTT LAP ÉRTESÍTÉSI LOGIKA (SZIGORÚAN KÜLÖN)
                         val events = m.events?.event.orEmpty()
                         events.forEach { event ->
                             val type = event.type?.lowercase() ?: ""
@@ -1447,6 +1563,20 @@ fun MatchesListScreen(
                         Text(text = "🔍", fontSize = 13.sp)
                     }
                 }
+
+                // AI SZELVÉNY BEOLVASÓ GOMB
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isScanningTicket) colors.accentYellow else colors.cardBackground)
+                            .clickable { ticketImageLauncher.launch("image/*") }
+                            .padding(8.dp)
+                    ) {
+                        Text(text = if (isScanningTicket) "⏳" else "📷", fontSize = 13.sp)
+                    }
+                }
+
                 item {
                     Box(
                         modifier = Modifier
@@ -1656,7 +1786,6 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                // RANGADÓ BANNER ELREJTÉSI LEHETŐSÉGGEL
                 if (featuredMatchPair != null && !isFeaturedDismissed && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
                     item {
                         FeaturedMatchBanner(
@@ -2116,7 +2245,6 @@ fun FeaturedMatchBanner(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.width(10.dp))
-                    // BEZÁRÓ GOMB (X)
                     Text(
                         text = "❌",
                         fontSize = 11.sp,
@@ -2443,7 +2571,6 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    // ODDSOK LETT AZ ELSŐ FÜL
     val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
@@ -2503,7 +2630,7 @@ fun MatchDetailScreen(
         if (apiKey.isBlank()) return@LaunchedEffect
 
         when (selectedTab) {
-            0 -> { // ODDSOK (0-ás fül)
+            0 -> {
                 val lId = leagueId ?: ""
                 val cacheKey = "odds_${lId}_${matchId}"
                 val cached: PrematchOddsMatch? = ApiCacheManager.get(cacheKey)
@@ -2533,7 +2660,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            2 -> { // HIÁNYZÓK
+            2 -> {
                 val cacheKey = "injuries_${matchId}"
                 val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2555,7 +2682,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            3 -> { // KEZDŐK
+            3 -> {
                 val cacheKey = "lineup_${matchId}"
                 val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2573,7 +2700,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            4 -> { // AI TIPP
+            4 -> {
                 val cacheKey = "prediction_${matchId}"
                 val cached: PredictionData? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2682,7 +2809,7 @@ fun MatchDetailScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         when (selectedTab) {
-            0 -> { // ODDSOK AZ ELSŐ HETEN
+            0 -> {
                 OddsTab(
                     match = match,
                     leagueName = leagueId,
@@ -2693,7 +2820,7 @@ fun MatchDetailScreen(
                     onToggleOdds = onToggleOdds
                 )
             }
-            1 -> { // H2H
+            1 -> {
                 if (isLoadingH2H) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2775,7 +2902,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            2 -> { // HIÁNYZÓK
+            2 -> {
                 if (isLoadingInjuries) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2802,7 +2929,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            3 -> { // KEZDŐK
+            3 -> {
                 if (isLoadingLineup) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2829,7 +2956,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            4 -> { // AI TIPP
+            4 -> {
                 if (isLoadingPrediction) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -3245,11 +3372,35 @@ fun BetSlipBar(
     items: List<BetSlipItem>,
     colors: AppColors,
     onClear: () -> Unit,
-    onSaveBet: (Double) -> Unit
+    onSaveBet: (Double) -> Unit,
+    onScanTicketItems: (List<BetSlipItem>) -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var isExpanded by remember { mutableStateOf(false) }
     var stakeInput by remember { mutableStateOf("1000") }
+    var isScanningInBar by remember { mutableStateOf(false) }
+
+    val barImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val geminiKey = getGeminiApiKey(context)
+            if (geminiKey.isBlank()) {
+                Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️)!", Toast.LENGTH_LONG).show()
+            } else {
+                isScanningInBar = true
+                coroutineScope.launch {
+                    val scanned = processTicketImageWithGemini(context, uri, geminiKey)
+                    isScanningInBar = false
+                    if (!scanned.isNullOrEmpty()) {
+                        onScanTicketItems(scanned)
+                        Toast.makeText(context, "🎉 ${scanned.size} tipp beolvasva!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
 
     val totalOdds = remember(items) {
         items.fold(1.0) { acc, item -> acc * item.odds }
@@ -3392,13 +3543,28 @@ fun BetSlipBar(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        Button(
-                            onClick = { onSaveBet(stake) },
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Fogadás elmentése (Virtuális tét)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Button(
+                                onClick = { barImageLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
+                                border = BorderStroke(1.dp, colors.accentYellow),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(0.4f)
+                            ) {
+                                Text(if (isScanningInBar) "⏳" else "📷 Fotó", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+
+                            Button(
+                                onClick = { onSaveBet(stake) },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(0.6f)
+                            ) {
+                                Text("Mentés (Virtuális tét)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
@@ -3491,7 +3657,6 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     var geminiKeyInput by remember { mutableStateOf(getGeminiApiKey(context)) }
     var theOddsKeyInput by remember { mutableStateOf(getTheOddsApiKey(context)) }
 
-    // KÜLÖN KAPCSOLÓK A SÁRGA ÉS PIROS LAPOKHOZ
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
     var yellowCardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_yellow_cards", true)) }
     var redCardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_red_cards", true)) }
@@ -3570,7 +3735,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Gemini API Kulcs (Web Odds tartalékhoz)",
+            text = "Gemini API Kulcs (Szelvény olvasóhoz & Web Odds-hoz)",
             color = colors.accentPrimary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
