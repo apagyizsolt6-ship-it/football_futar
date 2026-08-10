@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -61,6 +63,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -456,28 +459,39 @@ data class GeminiMarketOdds(
     val redCardYes: String
 )
 
-fun uriToBase64(context: Context, uri: Uri): String? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-        val bytes = inputStream.readBytes()
-        inputStream.close()
-        android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-    } catch (e: Exception) {
-        null
-    }
-}
-
 suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: String): List<BetSlipItem>? {
     return withContext(Dispatchers.IO) {
         try {
-            val base64Image = uriToBase64(context, uri) ?: return@withContext null
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext null
+            val originalBitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (originalBitmap == null) return@withContext null
+
+            // Kép optimalizálása (max 1280px-re méretezés a stabil hálózati küldéshez)
+            val maxDim = 1280
+            val width = originalBitmap.width
+            val height = originalBitmap.height
+            val scaledBitmap = if (width > maxDim || height > maxDim) {
+                val ratio = width.toFloat() / height.toFloat()
+                val targetWidth = if (width > height) maxDim else (maxDim * ratio).toInt()
+                val targetHeight = if (height > width) maxDim else (maxDim / ratio).toInt()
+                Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
+            } else {
+                originalBitmap
+            }
+
+            val outputStream = ByteArrayOutputStream()
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+            val imageBytes = outputStream.toByteArray()
+            val base64Image = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
+
             val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             conn.doOutput = true
 
-            val promptText = "Elemezd ezt a fogadási szelvényt vagy képernyőképet! Húzd ki az összes mérkőzés nevét (Hazai vs Vendég formátumban), a kiválasztott tippet (pl. 1, X, 2, Over 2.5, GG) és a hozzá tartozó odds-ot. A válaszodban KIZÁRÓLAG egyetlen valid JSON tömb szerepeljen, semmilyen más szöveg! Formátum: [{\"matchTitle\":\"Arsenal vs Chelsea\",\"choiceName\":\"1 (Arsenal)\",\"odds\":1.85}]"
+            val promptText = "Elemezd ezt a szerencsejáték/Tippmix/sportfogadási szelvényt vagy képernyőképet! Keresd meg az összes fogadási eseményt. Minden eseményhez add meg: 1. 'matchTitle': A két csapat neve (Hazai vs Vendég formátumban). 2. 'choiceName': A kiválasztott tipp (pl. 'Over 2.5 gól', 'Mindkét csapat szerez gólt: Igen', '1 (Hazai)', 'X', '2'). 3. 'odds': A tipphez tartozó odds tizedestörtként (pl. 1.74, 2.20, 2.51)."
 
             val body = """
                 {
@@ -491,7 +505,10 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
                         }
                       }
                     ]
-                  }]
+                  }],
+                  "generationConfig": {
+                    "responseMimeType": "application/json"
+                  }
                 }
             """.trimIndent()
 
@@ -514,28 +531,25 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
                         }
                     }
 
-                    val jsonMatcher = Regex("\\[[\\s\\S]*?\\]").find(rawText)
-                    val jsonString = jsonMatcher?.value
+                    val jsonElement = JsonParser().parse(rawText.trim())
+                    val jsonArray = if (jsonElement.isJsonArray) jsonElement.asJsonArray else return@withContext null
+                    val resultList = mutableListOf<BetSlipItem>()
 
-                    if (!jsonString.isNullOrBlank()) {
-                        val jsonArray = JsonParser().parse(jsonString).asJsonArray
-                        val resultList = mutableListOf<BetSlipItem>()
+                    for (i in 0 until jsonArray.size()) {
+                        val itemObj = jsonArray.get(i).asJsonObject
+                        val matchTitle = itemObj.get("matchTitle")?.asString ?: "Szelvény meccs"
+                        val choiceName = itemObj.get("choiceName")?.asString ?: "Tipp"
+                        val odds = itemObj.get("odds")?.asDouble ?: 1.80
+                        val matchId = "scanned_${UUID.randomUUID().toString().take(6)}"
 
-                        for (i in 0 until jsonArray.size()) {
-                            val itemObj = jsonArray.get(i).asJsonObject
-                            val matchTitle = itemObj.get("matchTitle")?.asString ?: "Szelvény meccs"
-                            val choiceName = itemObj.get("choiceName")?.asString ?: "Tipp"
-                            val odds = itemObj.get("odds")?.asDouble ?: 1.80
-                            val matchId = "scanned_${UUID.randomUUID().toString().take(6)}"
-
-                            resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
-                        }
-                        return@withContext resultList
+                        resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
                     }
+                    return@withContext resultList
                 }
             }
             null
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }
@@ -1243,7 +1257,7 @@ fun MatchesListScreen(
         if (uri != null) {
             val geminiKey = getGeminiApiKey(context)
             if (geminiKey.isBlank()) {
-                Toast.makeText(context, "Kérlek adod meg a Gemini API kulcsodat a Beállításokban (⚙️) a képfelismeréshez!", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️) a képfelismeréshez!", Toast.LENGTH_LONG).show()
             } else {
                 isScanningTicket = true
                 coroutineScope.launch {
@@ -2273,7 +2287,7 @@ fun FeaturedMatchBanner(
                 Text(
                     text = if (hasValidGoals) "$homeG - $awayG" else "VS",
                     color = colors.accentPrimary,
-                    fontSize = 22.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Black,
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
