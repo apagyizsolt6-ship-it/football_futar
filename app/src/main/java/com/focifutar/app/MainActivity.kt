@@ -479,7 +479,6 @@ fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
 }
 
-// JAVÍTOTT, AZONNALI ÉLŐ-FELISMERŐ LOGIKA
 fun isLiveMatch(match: StatPalMatch): Boolean {
     val statusStr = match.status?.trim()?.uppercase() ?: ""
     val timeStr = match.time?.trim()?.uppercase() ?: ""
@@ -498,7 +497,6 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
         return false
     }
 
-    // Ha percmutató, élő státuszkód vagy tiszta szám van a status-ban -> ÉLŐ MECCS
     if (rawStatus.contains("'") || rawStatus == "1H" || rawStatus == "2H" || 
         rawStatus == "HT" || rawStatus == "LIVE" || rawStatus == "INPLAY" ||
         match.status?.toIntOrNull() != null) {
@@ -510,6 +508,36 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
     }
 
     return true
+}
+
+// ==========================================
+// ÚJ TIPPMIXPRO STÍLUSÚ KEZDÉSI IDŐ SZŰRŐ MOTOR
+// ==========================================
+fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
+    val dateStr = match.date ?: return false
+    val timeStr = match.time ?: match.status ?: return false
+
+    // Az éppen zajló élő meccseket is belevesszük az időablakba
+    if (isLiveMatch(match)) return true
+
+    if (!timeStr.contains(":")) return false
+
+    return try {
+        val datePart = if (dateStr.isNotBlank()) dateStr else "01.01.2026"
+        val utcFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val parsedDate = utcFormat.parse("$datePart $timeStr") ?: return false
+        val nowMs = System.currentTimeMillis()
+        val matchMs = parsedDate.time
+        val diffMs = matchMs - nowMs
+        val diffHours = diffMs / (1000.0 * 60 * 60)
+
+        // A meccs a következő X órán belül kezdődik
+        diffHours in 0.0..(hours.toDouble())
+    } catch (e: Exception) {
+        false
+    }
 }
 
 fun isAllowedLeague(leagueName: String?): Boolean {
@@ -570,7 +598,7 @@ fun translateLeagueName(leagueName: String?): String {
         "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "GUATEMALA" to "🇬🇹 GUATEMALA", "HONDURAS" to "🇭🇳 HONDURAS",
         "HUNGARY" to "🇭🇺 MAGYARORSZÁG", "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA",
         "IRAN" to "🇮🇷 IRÁN", "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL",
-        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN",
+        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰ℤ KAZAHSZTÁN",
         "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN", "LATVIA" to "🇱🇻 LETTORSZÁG",
         "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG", "MEXICO" to "🇲🇽 MEXIKÓ",
         "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
@@ -888,6 +916,10 @@ fun MatchesListScreen(
     var isOnlyLiveFilter by remember { mutableStateOf(false) }
     var isTopLeaguesFilter by remember { mutableStateOf(false) }
     var isFavoriteLeaguesFilter by remember { mutableStateOf(false) }
+    
+    // ÚJ: IDŐABLAK SZŰRŐ ÁLLAPOT (3h, 6h, 9h)
+    var selectedTimeFilterHours by remember { mutableStateOf<Int?>(null) }
+
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
@@ -1041,7 +1073,7 @@ fun MatchesListScreen(
         leagues.sumOf { league -> league.match.count { isLiveMatch(it) } }
     }
 
-    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, searchQuery, favoriteLeagueKeys) {
+    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, selectedTimeFilterHours, searchQuery, favoriteLeagueKeys) {
         val baseList = leagues.mapNotNull { league ->
             val leagueKey = league.id ?: league.name ?: ""
             if (isFavoriteLeaguesFilter && !favoriteLeagueKeys.contains(leagueKey)) {
@@ -1050,16 +1082,24 @@ fun MatchesListScreen(
 
             val matches = league.match
             val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
+            
+            // IDŐABLAK SZŰRÉS (3h, 6h, 9h)
+            val matchesAfterTime = if (selectedTimeFilterHours != null) {
+                matchesAfterLive.filter { isMatchWithinHours(it, selectedTimeFilterHours!!) }
+            } else matchesAfterLive
+
             val matchesAfterSearch = if (searchQuery.isNotBlank()) {
                 val q = searchQuery.lowercase().trim()
-                matchesAfterLive.filter { match ->
+                matchesAfterTime.filter { match ->
                     (match.home?.name?.lowercase()?.contains(q) == true) ||
                     (match.away?.name?.lowercase()?.contains(q) == true) ||
                     (league.name?.lowercase()?.contains(q) == true)
                 }
-            } else matchesAfterLive
+            } else matchesAfterTime
 
-            if (matchesAfterSearch.isNotEmpty()) league else null
+            if (matchesAfterSearch.isNotEmpty()) {
+                league.copy(match = matchesAfterSearch)
+            } else null
         }
 
         val topFiltered = if (isTopLeaguesFilter) {
@@ -1185,6 +1225,65 @@ fun MatchesListScreen(
                         }
                     }
                 }
+
+                // ==========================================
+                // TIPPMIXPRO STÍLUSÚ IDŐSZŰRŐ IKONOK
+                // ==========================================
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (selectedTimeFilterHours == 3) colors.accentPrimary else colors.cardBackground)
+                            .clickable {
+                                selectedTimeFilterHours = if (selectedTimeFilterHours == 3) null else 3
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "⏱️ <3h",
+                            color = if (selectedTimeFilterHours == 3) Color.White else colors.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (selectedTimeFilterHours == 6) colors.accentPrimary else colors.cardBackground)
+                            .clickable {
+                                selectedTimeFilterHours = if (selectedTimeFilterHours == 6) null else 6
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "⏱️ <6h",
+                            color = if (selectedTimeFilterHours == 6) Color.White else colors.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (selectedTimeFilterHours == 9) colors.accentPrimary else colors.cardBackground)
+                            .clickable {
+                                selectedTimeFilterHours = if (selectedTimeFilterHours == 9) null else 9
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "⏱️ <9h",
+                            color = if (selectedTimeFilterHours == 9) Color.White else colors.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 item {
                     Box(
                         modifier = Modifier
@@ -1230,7 +1329,6 @@ fun MatchesListScreen(
                     }
                 }
                 item {
-                    // JAVÍTOTT KÉNYSZERÍTETT FRISSÍTÉS (TÖRLI A MEMÓRIACACHE-T IS)
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
@@ -1308,7 +1406,7 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                if (featuredMatchPair != null && searchQuery.isBlank() && !isOnlyLiveFilter) {
+                if (featuredMatchPair != null && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
                     item {
                         FeaturedMatchBanner(featuredMatchPair.first, colors) {
                             selectedMatchGlobal = featuredMatchPair.first
@@ -1318,7 +1416,7 @@ fun MatchesListScreen(
                     }
                 }
 
-                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter) {
+                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
                     item {
                         LeagueHeader(
                             title = "⭐ KEDVENC MECCSEK",
