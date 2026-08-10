@@ -36,7 +36,6 @@ class MatchLiveService : Service() {
                         leagues.flatMap { it.match }.forEach { m ->
                             val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
                             if (favoriteIds.contains(id)) {
-                                // Megnézzük, hogy ez a kedvenc meccs éppen zajlik-e
                                 if (isLiveMatch(m)) {
                                     hasActiveLiveFavorites = true
                                 }
@@ -88,13 +87,12 @@ class MatchLiveService : Service() {
                     }
                 } catch (_: Exception) {}
 
-                // INTELLIGENS SPÓROLÁS:
-                // Ha van élő kedvenc meccs -> 15 másodperc múlva kérdez újra.
-                // Ha NINCS élő meccs -> 5 percet (300 000 ms) vártat, spórolva az API limittel!
+                // OPTIMALIZÁLT VÁRAKOZÁSI IDŐ (50 000 lekéréses limithez):
+                // Élő kedvenc esetén 15 másodperc, egyébként 30 másodperc (5 perc helyett).
                 if (hasActiveLiveFavorites) {
                     delay(15000L)
                 } else {
-                    delay(300000L)
+                    delay(30000L)
                 }
             }
         }
