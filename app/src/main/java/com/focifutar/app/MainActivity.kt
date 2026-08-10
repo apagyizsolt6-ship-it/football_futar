@@ -114,7 +114,8 @@ data class SavedBet(
     val totalOdds: Double,
     val potentialWin: Double,
     val dateStr: String,
-    val status: String
+    var status: String = "FÜGGŐBEN", // "FÜGGŐBEN", "NYERT", "VESZÍTETT"
+    var isPaidOut: Boolean = false
 )
 
 fun isDarkModeSaved(context: Context): Boolean {
@@ -207,6 +208,12 @@ fun saveNewBet(context: Context, bet: SavedBet) {
     val currentBets = getSavedBets(context).toMutableList()
     currentBets.add(0, bet)
     val json = Gson().toJson(currentBets)
+    prefs.edit().putString("saved_bets_json", json).apply()
+}
+
+fun updateSavedBetsStorage(context: Context, bets: List<SavedBet>) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val json = Gson().toJson(bets)
     prefs.edit().putString("saved_bets_json", json).apply()
 }
 
@@ -800,11 +807,25 @@ class MainActivity : ComponentActivity() {
                                             totalOdds = totalOdds,
                                             potentialWin = totalOdds * stake,
                                             dateStr = SimpleDateFormat("MM.dd HH:mm", Locale.getDefault()).format(Date()),
-                                            status = "FÜGGŐBEN"
+                                            status = "FÜGGŐBEN",
+                                            isPaidOut = false
                                         )
                                         saveNewBet(context, newBet)
 
-                                        Toast.makeText(context, "Fogadás elmentve! Tét: ${stake.toInt()} Ft", Toast.LENGTH_SHORT).show()
+                                        // ==========================================
+                                        // AUTOMATIKUS KEDVENCKÉ TÉTEL & ÉRTESÍTÉSEK
+                                        // ==========================================
+                                        val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                                        val currentFavs = prefs.getStringSet("favorite_matches", emptySet())?.toMutableSet() ?: mutableSetOf()
+                                        var addedCount = 0
+                                        for (item in betSlipItems) {
+                                            if (currentFavs.add(item.matchId)) {
+                                                addedCount++
+                                            }
+                                        }
+                                        prefs.edit().putStringSet("favorite_matches", currentFavs).apply()
+
+                                        Toast.makeText(context, "Fogadás elmentve! $addedCount meccs a kedvencekhez adva ⚽🔔", Toast.LENGTH_LONG).show()
                                         betSlipItems = emptyList()
                                     } else {
                                         Toast.makeText(context, "Nincs elég virtuális egyenleged!", Toast.LENGTH_SHORT).show()
@@ -1352,6 +1373,67 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
     var savedBets by remember { mutableStateOf(getSavedBets(context)) }
     var balance by remember { mutableStateOf(getVirtualBalance(context)) }
 
+    // Automatikus státusz kiértékelés a cachelt meccsek alapján
+    LaunchedEffect(Unit) {
+        val updatedBets = savedBets.map { bet ->
+            if (bet.status == "FÜGGŐBEN") {
+                var allFinished = true
+                var allWon = true
+
+                for (item in bet.items) {
+                    val cachedLeagues: List<StatPalLeague>? = ApiCacheManager.get("matches_offset_0")
+                    val allMatches = cachedLeagues?.flatMap { it.match }.orEmpty()
+                    val match = allMatches.find { (it.mainId ?: "${it.home?.name}-${it.away?.name}") == item.matchId }
+
+                    if (match == null) {
+                        allFinished = false
+                        break
+                    }
+
+                    val rawStatus = (match.status ?: match.time ?: "").uppercase()
+                    val isFinished = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
+
+                    if (!isFinished) {
+                        allFinished = false
+                        break
+                    }
+
+                    val hG = match.home?.goals?.toIntOrNull() ?: 0
+                    val aG = match.away?.goals?.toIntOrNull() ?: 0
+
+                    val choice = item.choiceName
+                    val isChoiceWon = when {
+                        choice.contains("1") && hG > aG -> true
+                        choice.contains("X") && hG == aG -> true
+                        choice.contains("2") && aG > hG -> true
+                        choice.contains("Gól-gól (Igen)") && hG > 0 && aG > 0 -> true
+                        choice.contains("Over 2.5") && (hG + aG) > 2 -> true
+                        choice.contains("GG + Over 2.5") && hG > 0 && aG > 0 && (hG + aG) > 2 -> true
+                        else -> false
+                    }
+
+                    if (!isChoiceWon) {
+                        allWon = false
+                    }
+                }
+
+                if (allFinished) {
+                    bet.status = if (allWon) "NYERT" else "VESZÍTETT"
+                    if (allWon && !bet.isPaidOut) {
+                        bet.isPaidOut = true
+                        val currentBal = getVirtualBalance(context)
+                        val newBal = currentBal + bet.potentialWin
+                        updateVirtualBalance(context, newBal)
+                        balance = newBal
+                    }
+                }
+            }
+            bet
+        }
+        updateSavedBetsStorage(context, updatedBets)
+        savedBets = updatedBets
+    }
+
     val totalStaked = savedBets.sumOf { it.stake }
 
     Column(
@@ -1421,11 +1503,22 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(savedBets) { bet ->
+                    val cardBg = when (bet.status) {
+                        "NYERT" -> Color(0xFF22C55E).copy(alpha = 0.2f)
+                        "VESZÍTETT" -> Color(0xFFEF4444).copy(alpha = 0.2f)
+                        else -> colors.cardBackground
+                    }
+                    val borderColor = when (bet.status) {
+                        "NYERT" -> Color(0xFF22C55E)
+                        "VESZÍTETT" -> Color(0xFFEF4444)
+                        else -> colors.border
+                    }
+
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -1433,7 +1526,16 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(bet.dateStr, color = colors.textMuted, fontSize = 10.sp)
-                                Text(bet.status, color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                Text(
+                                    text = bet.status,
+                                    color = when (bet.status) {
+                                        "NYERT" -> Color(0xFF22C55E)
+                                        "VESZÍTETT" -> Color(0xFFEF4444)
+                                        else -> colors.accentYellow
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             bet.items.forEach { item ->
@@ -2428,7 +2530,6 @@ fun OddsTab(
     onToggleOdds: (BetSlipItem) -> Unit
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val geminiKey = remember { getGeminiApiKey(context) }
 
     var geminiOdds by remember { mutableStateOf<Triple<String, String, String>?>(null) }
@@ -2485,11 +2586,10 @@ fun OddsTab(
     val bookmakerName = if (!apiHomeOdd.isNullOrBlank()) (bookmaker?.name ?: "StatPal Odds") else (if (geminiOdds != null) "🤖 Gemini Web Odds" else "Futár Smart Odds")
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // 1X2 Piac
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Row(
@@ -2501,10 +2601,7 @@ fun OddsTab(
                     Text(bookmakerName, color = colors.textMuted, fontSize = 10.sp)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val is1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 ($homeName)" }
                     val isX = betSlipItems.any { it.matchId == matchId && it.choiceName == "X (Döntetlen)" }
                     val is2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "2 ($awayName)" }
@@ -2521,6 +2618,32 @@ fun OddsTab(
                     }
                     OddsBox("2 ($awayName)", awayOddVal, isSelected = is2, colors = colors, modifier = Modifier.weight(1f)) {
                         onToggleOdds(BetSlipItem(matchId, matchTitle, "2 ($awayName)", aDouble))
+                    }
+                }
+            }
+        }
+
+        // ÚJ BŐVÍTETT PIACOK: Gól-gól és Over/Under 2.5
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("⚽ TOVÁBBI NÉPSZERŰ PIACOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val isBttsYes = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gól-gól (Igen)" }
+                    val isOver25 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Over 2.5 gól" }
+                    val isBttsOver25 = betSlipItems.any { it.matchId == matchId && it.choiceName == "GG + Over 2.5" }
+
+                    OddsBox("Gól-gól (Igen)", "1.75", isSelected = isBttsYes, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Gól-gól (Igen)", 1.75))
+                    }
+                    OddsBox("Over 2.5 gól", "1.85", isSelected = isOver25, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "Over 2.5 gól", 1.85))
+                    }
+                    OddsBox("GG + Over 2.5", "2.35", isSelected = isBttsOver25, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "GG + Over 2.5", 2.35))
                     }
                 }
             }
