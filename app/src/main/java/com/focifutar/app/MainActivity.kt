@@ -283,7 +283,7 @@ suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): Tri
 
             if (conn.responseCode == 200) {
                 val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val jsonObj = JsonParser.parseString(responseStr).asJsonObject
+                val jsonObj = JsonParser().parse(responseStr).asJsonObject
                 val candidates = jsonObj.getAsJsonArray("candidates")
                 if (candidates != null && candidates.size() > 0) {
                     val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
@@ -291,7 +291,7 @@ suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): Tri
                     val text = parts.get(0).asJsonObject.get("text").asString
                     
                     val cleanJson = text.replace("```json", "").replace("```", "").trim()
-                    val oddsObj = JsonParser.parseString(cleanJson).asJsonObject
+                    val oddsObj = JsonParser().parse(cleanJson).asJsonObject
                     val h = oddsObj.get("home").asString
                     val d = oddsObj.get("draw").asString
                     val a = oddsObj.get("away").asString
