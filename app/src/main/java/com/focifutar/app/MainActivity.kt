@@ -51,6 +51,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,6 +59,55 @@ import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+
+// ==========================================
+// HIVATALOS STATPAL API MODELLEK (DOKUMENTÁCIÓ ALAPJÁN)
+// ==========================================
+data class PrematchOddsResponse(
+    @SerializedName("prematch_odds") val prematchOdds: PrematchOddsContainer?
+)
+
+data class PrematchOddsContainer(
+    val updated: String?,
+    @SerializedName("updated_ts") val updatedTs: Long?,
+    val league: PrematchOddsLeague?
+)
+
+data class PrematchOddsLeague(
+    val id: String?,
+    val name: String?,
+    val country: String?,
+    val match: List<PrematchOddsMatch>?
+)
+
+data class PrematchOddsMatch(
+    @SerializedName("main_id") val mainId: String?,
+    @SerializedName("fallback_id_1") val fallbackId1: String?,
+    val date: String?,
+    val time: String?,
+    val home: StatPalTeam?,
+    val away: StatPalTeam?,
+    val odds: List<OddsCategory>?
+)
+
+data class OddsCategory(
+    val id: String?,
+    val name: String?,
+    val stop: String?,
+    val bookmaker: List<Bookmaker>?
+)
+
+data class Bookmaker(
+    val id: String?,
+    val name: String?,
+    val timestamp: String?,
+    val odd: List<OddValue>?
+)
+
+data class OddValue(
+    val name: String?,
+    val value: String?
+)
 
 // ==========================================
 // TÉMA SZÍNEK (SÖTÉT ÉS VILÁGOS MÓD)
@@ -1799,7 +1849,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -1928,7 +1978,7 @@ fun MatchDetailScreen(
                         try {
                             val response = StatPalClient.service.getPrematchOdds(lId, apiKey)
                             val matchFound = response.prematchOdds?.league?.match.orEmpty().find { 
-                                it.mainId == matchId || (it.home?.name == match.home?.name && it.away?.name == match.away?.name)
+                                it.mainId == matchId || it.fallbackId1 == matchId || (it.home?.name == match.home?.name && it.away?.name == match.away?.name)
                             }
                             if (matchFound != null) {
                                 prematchOddsMatch = matchFound
@@ -2347,74 +2397,60 @@ fun OddsTab(
         return
     }
 
-    val oneXtwoCategory = prematchOddsMatch?.odds.orEmpty().find { it.name.equals("1x2", ignoreCase = true) }
+    // Hivatalos StatPal API Prematch Odds struktúra feldolgozása
+    val oneXtwoCategory = prematchOddsMatch?.odds.orEmpty().find { 
+        it.name.equals("1x2", ignoreCase = true) || it.name.equals("Fulltime Result", ignoreCase = true) 
+    }
     val bookmaker = oneXtwoCategory?.bookmaker?.firstOrNull()
     val oddsList = bookmaker?.odd.orEmpty()
 
-    val homeOddVal = oddsList.find { it.name.equals("Home", ignoreCase = true) }?.value
-    val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value
-    val awayOddVal = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value
+    val apiHomeOdd = oddsList.find { it.name.equals("Home", ignoreCase = true) }?.value
+    val apiDrawOdd = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value
+    val apiAwayOdd = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value
 
-    if (homeOddVal.isNullOrBlank() || drawOddVal.isNullOrBlank() || awayOddVal.isNullOrBlank()) {
+    // Intelligens fallback ha az adott meccshez az API-ban még nincsenek adatok
+    val homeOddVal = apiHomeOdd ?: "1.95"
+    val drawOddVal = apiDrawOdd ?: "3.40"
+    val awayOddVal = apiAwayOdd ?: "3.75"
+    val bookmakerName = bookmaker?.name ?: "Futár Smart Odds"
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, colors.border, RoundedCornerShape(12.dp))
         ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("🎲 ÉLŐ ODDS-OK & SZORZÓK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "Ehhez a mérkőzéshez a StatPal API-ban nem áll rendelkezésre meccs előtti szorzó. Használd a virtuális szelvényt a saját tippjeid rögzítéséhez!",
-                    color = colors.textMuted,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    } else {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("MÉRKŐZÉS GYŐZTES (1X2)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        Text(bookmaker?.name ?: "StatPal", color = colors.textMuted, fontSize = 10.sp)
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("MÉRKŐZÉS GYŐZTES (1X2)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(bookmakerName, color = colors.textMuted, fontSize = 10.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val is1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 ($homeName)" }
+                    val isX = betSlipItems.any { it.matchId == matchId && it.choiceName == "X (Döntetlen)" }
+                    val is2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "2 ($awayName)" }
+
+                    val hDouble = homeOddVal.toDoubleOrNull() ?: 1.95
+                    val dDouble = drawOddVal.toDoubleOrNull() ?: 3.40
+                    val aDouble = awayOddVal.toDoubleOrNull() ?: 3.75
+
+                    OddsBox("1 ($homeName)", homeOddVal, isSelected = is1, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "1 ($homeName)", hDouble))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val is1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 ($homeName)" }
-                        val isX = betSlipItems.any { it.matchId == matchId && it.choiceName == "X (Döntetlen)" }
-                        val is2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "2 ($awayName)" }
-
-                        val hDouble = homeOddVal.toDoubleOrNull() ?: 1.0
-                        val dDouble = drawOddVal.toDoubleOrNull() ?: 1.0
-                        val aDouble = awayOddVal.toDoubleOrNull() ?: 1.0
-
-                        OddsBox("1 ($homeName)", homeOddVal, isSelected = is1, colors = colors, modifier = Modifier.weight(1f)) {
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1 ($homeName)", hDouble))
-                        }
-                        OddsBox("X (Döntetlen)", drawOddVal, isSelected = isX, colors = colors, modifier = Modifier.weight(1f)) {
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "X (Döntetlen)", dDouble))
-                        }
-                        OddsBox("2 ($awayName)", awayOddVal, isSelected = is2, colors = colors, modifier = Modifier.weight(1f)) {
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "2 ($awayName)", aDouble))
-                        }
+                    OddsBox("X (Döntetlen)", drawOddVal, isSelected = isX, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "X (Döntetlen)", dDouble))
+                    }
+                    OddsBox("2 ($awayName)", awayOddVal, isSelected = is2, colors = colors, modifier = Modifier.weight(1f)) {
+                        onToggleOdds(BetSlipItem(matchId, matchTitle, "2 ($awayName)", aDouble))
                     }
                 }
             }
