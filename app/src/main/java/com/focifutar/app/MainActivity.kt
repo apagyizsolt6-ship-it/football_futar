@@ -1,5 +1,3 @@
-Remek ötlet! Ha sok piacot szeretnénk megjeleníteni átláthatóan, akkor a legjobb megoldás egy kompakt, rácsos (grid) elrendezés, ahol a dobozok kicsit kisebbek, így egyszerre sokkal több opció (1X2, Gól-gól igen/nem, Over/Under 2.5, Félidő 1X2, Piros lap stb.) ráfér a képernyőre görgetés nélkül vagy kényelmesen böngészve.
-Íme a teljes, frissített MainActivity.kt, amely már tartalmazza a bővített, részletes piacokat és a helytakarékos, kompakt odds-nézetet:
 package com.focifutar.app
 
 import android.Manifest
@@ -3172,4 +3170,3 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         }
     }
 }
-
