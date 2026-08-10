@@ -974,145 +974,163 @@ fun MatchesListScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        Row(
+        // KÉT SOROS FEJLÉC ELHELYEZÉS (1. sor: Név + Egyenleg, 2. sor: Összes kezelőikon görgethetően)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 1. SOR: FOOTBALL FUTÁR ÉS VIRTUÁLIS EGYENLEG
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable {
-                    virtualBalance = getVirtualBalance(context)
-                    navController.navigate("saved_bets")
-                }
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "FOOTBALL FUTÁR",
-                    color = colors.accentPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.cardBackground)
-                        .border(1.dp, colors.accentYellow.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        virtualBalance = getVirtualBalance(context)
+                        navController.navigate("saved_bets")
+                    }
                 ) {
                     Text(
-                        text = "💰 ${virtualBalance.toInt()} Ft 🎟️",
-                        color = colors.accentYellow,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "FOOTBALL FUTÁR",
+                        color = colors.accentPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
                     )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(if (isSearchOpen) colors.accentPrimary else colors.cardBackground)
-                        .clickable { isSearchOpen = !isSearchOpen }
-                        .padding(6.dp)
-                ) {
-                    Text(text = "🔍", fontSize = 12.sp)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isFavoriteLeaguesFilter) colors.accentYellow else colors.cardBackground)
-                        .clickable { isFavoriteLeaguesFilter = !isFavoriteLeaguesFilter }
-                        .padding(horizontal = 6.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = "⭐",
-                        fontSize = 10.sp
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isOnlyLiveFilter) colors.accentRed else colors.cardBackground)
-                        .clickable { isOnlyLiveFilter = !isOnlyLiveFilter }
-                        .padding(horizontal = 6.dp, vertical = 5.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "🔴", fontSize = 10.sp)
-                        Spacer(modifier = Modifier.width(2.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.cardBackground)
+                            .border(1.dp, colors.accentYellow.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Text(
-                            text = if (totalLiveCount > 0) "ÉLŐ ($totalLiveCount)" else "ÉLŐ",
-                            color = if (isOnlyLiveFilter) Color.White else colors.textPrimary,
-                            fontSize = 10.sp,
+                            text = "💰 ${virtualBalance.toInt()} Ft 🎟️",
+                            color = colors.accentYellow,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
+            }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isTopLeaguesFilter) colors.accentPrimary else colors.cardBackground)
-                        .clickable { isTopLeaguesFilter = !isTopLeaguesFilter }
-                        .padding(horizontal = 6.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = "🏆 TOP",
-                        color = if (isTopLeaguesFilter) Color.White else colors.textPrimary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            // 2. SOR: ÖSSZES IKON ÉS GOMB GÖRGETHETŐ SORBAN (Így a beállítások ⚙️ is mindig látszik!)
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isSearchOpen) colors.accentPrimary else colors.cardBackground)
+                            .clickable { isSearchOpen = !isSearchOpen }
+                            .padding(8.dp)
+                    ) {
+                        Text(text = "🔍", fontSize = 13.sp)
+                    }
                 }
-
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.cardBackground)
-                        .clickable {
-                            collapsedLeagueIds = if (collapsedLeagueIds.isNotEmpty() && collapsedLeagueIds.size == leagues.size) {
-                                emptySet()
-                            } else {
-                                leagues.mapNotNull { it.id ?: it.name }.toSet()
-                            }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isFavoriteLeaguesFilter) colors.accentYellow else colors.cardBackground)
+                            .clickable { isFavoriteLeaguesFilter = !isFavoriteLeaguesFilter }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(text = "⭐ Kedvencek", color = if (isFavoriteLeaguesFilter) Color.White else colors.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isOnlyLiveFilter) colors.accentRed else colors.cardBackground)
+                            .clickable { isOnlyLiveFilter = !isOnlyLiveFilter }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🔴", fontSize = 11.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (totalLiveCount > 0) "ÉLŐ ($totalLiveCount)" else "ÉLŐ",
+                                color = if (isOnlyLiveFilter) Color.White else colors.textPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
-                        .padding(6.dp)
-                ) {
-                    Text(text = if (collapsedLeagueIds.isNotEmpty() && collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 12.sp)
+                    }
                 }
-
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.cardBackground)
-                        .clickable { onToggleDarkMode(!isDarkMode) }
-                        .padding(6.dp)
-                ) {
-                    Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 12.sp)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isTopLeaguesFilter) colors.accentPrimary else colors.cardBackground)
+                            .clickable { isTopLeaguesFilter = !isTopLeaguesFilter }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "🏆 TOP",
+                            color = if (isTopLeaguesFilter) Color.White else colors.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
-
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.cardBackground)
-                        .clickable { fetchMatches(forceRefresh = true) }
-                        .padding(6.dp)
-                ) {
-                    Text(text = "🔄", fontSize = 12.sp)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.cardBackground)
+                            .clickable {
+                                collapsedLeagueIds = if (collapsedLeagueIds.isNotEmpty() && collapsedLeagueIds.size == leagues.size) {
+                                    emptySet()
+                                } else {
+                                    leagues.mapNotNull { it.id ?: it.name }.toSet()
+                                }
+                            }
+                            .padding(8.dp)
+                    ) {
+                        Text(text = if (collapsedLeagueIds.isNotEmpty() && collapsedLeagueIds.size == leagues.size) "📂" else "📁", fontSize = 13.sp)
+                    }
                 }
-
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.cardBackground)
-                        .clickable { navController.navigate("api_settings") }
-                        .padding(6.dp)
-                ) {
-                    Text(text = "⚙️", fontSize = 12.sp)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.cardBackground)
+                            .clickable { onToggleDarkMode(!isDarkMode) }
+                            .padding(8.dp)
+                    ) {
+                        Text(text = if (isDarkMode) "☀️" else "🌙", fontSize = 13.sp)
+                    }
+                }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.cardBackground)
+                            .clickable { fetchMatches(forceRefresh = true) }
+                            .padding(8.dp)
+                    ) {
+                        Text(text = "🔄", fontSize = 13.sp)
+                    }
+                }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.cardBackground)
+                            .clickable { navController.navigate("api_settings") }
+                            .padding(8.dp)
+                    ) {
+                        Text(text = "⚙️", fontSize = 13.sp)
+                    }
                 }
             }
         }
