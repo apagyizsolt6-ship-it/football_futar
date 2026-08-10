@@ -267,8 +267,176 @@ fun getGeminiApiKey(context: Context): String {
     return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
+fun saveTheOddsApiKey(context: Context, key: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val cleanKey = key.trim().replace("\"", "").replace("'", "")
+    prefs.edit().putString("the_odds_api_key", cleanKey).apply()
+}
+
+fun getTheOddsApiKey(context: Context): String {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+}
+
 // ==========================================
-// GEMINI WEB ODDS KINYERŐ (JAVÍTOTT REGEX-ES VERSION)
+// BAJNOKSÁG LEKÉPEZÉS (THE ODDS API KEYS)
+// ==========================================
+fun getTheOddsApiSportKey(leagueName: String?): String {
+    val l = leagueName?.uppercase() ?: return "upcoming"
+    return when {
+        l.contains("PREMIER LEAGUE") -> "soccer_epl"
+        l.contains("LA LIGA") -> "soccer_spain_la_liga"
+        l.contains("SERIE A") -> "soccer_italy_serie_a"
+        l.contains("BUNDESLIGA") -> "soccer_germany_bundesliga"
+        l.contains("LIGUE 1") -> "soccer_france_ligue_one"
+        l.contains("CHAMPIONS LEAGUE") -> "soccer_uefa_champs_league"
+        l.contains("EUROPA LEAGUE") -> "soccer_uefa_europa_league"
+        l.contains("EREDIVISIE") -> "soccer_netherlands_eredivisie"
+        l.contains("PRIMEIRA LIGA") -> "soccer_portugal_primeira_liga"
+        l.contains("SUPER LIG") -> "soccer_turkey_super_league"
+        l.contains("MLS") -> "soccer_usa_mls"
+        else -> "upcoming"
+    }
+}
+
+// ==========================================
+// THE ODDS API DEDIKÁLT ÉS MPT LEKÉRDEZŐ
+// ==========================================
+data class OddsApiResult(
+    val home: String,
+    val draw: String,
+    val away: String,
+    val over25: String,
+    val under25: String,
+    val homeSpread: String,
+    val awaySpread: String,
+    val bookmakerName: String
+)
+
+suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: String, away: String): OddsApiResult? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val sportKey = getTheOddsApiSportKey(leagueName)
+            val cacheKey = "the_odds_api_${sportKey}_all_markets"
+            var rawJson: String? = ApiCacheManager.get(cacheKey, 15 * 60 * 1000L) // 15 perces gyorsítótár
+
+            if (rawJson == null) {
+                val url = URL("https://api.the-odds-api.com/v4/sports/$sportKey/odds/?apiKey=$apiKey&regions=eu&markets=h2h,totals,spreads")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
+
+                if (conn.responseCode == 200) {
+                    rawJson = conn.inputStream.bufferedReader().use { it.readText() }
+                    ApiCacheManager.put(cacheKey, rawJson)
+                }
+            }
+
+            if (!rawJson.isNullOrBlank()) {
+                val jsonArray = JsonParser().parse(rawJson).asJsonArray
+                val homeClean = home.lowercase().trim()
+                val awayClean = away.lowercase().trim()
+
+                for (i in 0 until jsonArray.size()) {
+                    val event = jsonArray.get(i).asJsonObject
+                    val eHome = event.get("home_team")?.asString?.lowercase() ?: ""
+                    val eAway = event.get("away_team")?.asString?.lowercase() ?: ""
+
+                    val matchHome = eHome.contains(homeClean) || homeClean.contains(eHome) || checkFuzzyMatch(eHome, homeClean)
+                    val matchAway = eAway.contains(awayClean) || awayClean.contains(eAway) || checkFuzzyMatch(eAway, awayClean)
+
+                    if (matchHome && matchAway) {
+                        val bookmakers = event.getAsJsonArray("bookmakers")
+                        if (bookmakers != null && bookmakers.size() > 0) {
+                            val bookie = bookmakers.get(0).asJsonObject
+                            val bookieTitle = bookie.get("title")?.asString ?: "The Odds API"
+                            val markets = bookie.getAsJsonArray("markets")
+
+                            var hOdd = "1.95"
+                            var dOdd = "3.40"
+                            var aOdd = "3.75"
+                            var o25Odd = "1.85"
+                            var u25Odd = "1.90"
+                            var hSpread = "1.90"
+                            var aSpread = "1.90"
+
+                            for (m in 0 until markets.size()) {
+                                val market = markets.get(m).asJsonObject
+                                val mKey = market.get("key")?.asString ?: ""
+                                val outcomes = market.getAsJsonArray("outcomes") ?: continue
+
+                                when (mKey) {
+                                    "h2h" -> {
+                                        for (o in 0 until outcomes.size()) {
+                                            val out = outcomes.get(o).asJsonObject
+                                            val name = out.get("name")?.asString ?: ""
+                                            val price = out.get("price")?.asDouble ?: 1.0
+                                            val priceStr = String.format(Locale.US, "%.2f", price)
+
+                                            if (name.equals(event.get("home_team")?.asString, ignoreCase = true)) hOdd = priceStr
+                                            else if (name.equals(event.get("away_team")?.asString, ignoreCase = true)) aOdd = priceStr
+                                            else dOdd = priceStr
+                                        }
+                                    }
+                                    "totals" -> {
+                                        for (o in 0 until outcomes.size()) {
+                                            val out = outcomes.get(o).asJsonObject
+                                            val name = out.get("name")?.asString ?: ""
+                                            val point = out.get("point")?.asDouble ?: 2.5
+                                            val price = out.get("price")?.asDouble ?: 1.0
+                                            val priceStr = String.format(Locale.US, "%.2f", price)
+
+                                            if (point == 2.5) {
+                                                if (name.equals("Over", ignoreCase = true)) o25Odd = priceStr
+                                                else if (name.equals("Under", ignoreCase = true)) u25Odd = priceStr
+                                            }
+                                        }
+                                    }
+                                    "spreads" -> {
+                                        for (o in 0 until outcomes.size()) {
+                                            val out = outcomes.get(o).asJsonObject
+                                            val name = out.get("name")?.asString ?: ""
+                                            val price = out.get("price")?.asDouble ?: 1.0
+                                            val priceStr = String.format(Locale.US, "%.2f", price)
+
+                                            if (name.equals(event.get("home_team")?.asString, ignoreCase = true)) hSpread = priceStr
+                                            else aSpread = priceStr
+                                        }
+                                    }
+                                }
+                            }
+
+                            return@withContext OddsApiResult(
+                                home = hOdd,
+                                draw = dOdd,
+                                away = aOdd,
+                                over25 = o25Odd,
+                                under25 = u25Odd,
+                                homeSpread = hSpread,
+                                awaySpread = aSpread,
+                                bookmakerName = "🎯 $bookieTitle"
+                            )
+                        }
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
+fun checkFuzzyMatch(s1: String, s2: String): Boolean {
+    if (s1.isBlank() || s2.isBlank()) return false
+    val words1 = s1.split(" ")
+    val words2 = s2.split(" ")
+    return words1.any { w -> w.length >= 4 && s2.contains(w) } || words2.any { w -> w.length >= 4 && s1.contains(w) }
+}
+
+// ==========================================
+// GEMINI WEB ODDS KINYERŐ (REGEX)
 // ==========================================
 data class GeminiMarketOdds(
     val home: String,
@@ -351,7 +519,6 @@ suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): Gem
             }
             null
         } catch (e: Exception) {
-            e.printStackTrace()
             null
         }
     }
@@ -528,9 +695,6 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
     return true
 }
 
-// ==========================================
-// PONTOS IDŐBÉLYEG SZÁMÍTÓ RENDEZÉSHEZ
-// ==========================================
 fun getMatchTimestamp(match: StatPalMatch): Long {
     if (isLiveMatch(match)) return 0L
 
@@ -552,9 +716,6 @@ fun getMatchTimestamp(match: StatPalMatch): Long {
     }
 }
 
-// ==========================================
-// IDŐABLAK SZŰRŐ MOTOR (<3h, <6h, <9h)
-// ==========================================
 fun isMatchWithinHours(match: StatPalMatch, hours: Int): Boolean {
     val dateStr = match.date ?: return false
     val timeStr = match.time ?: match.status ?: return false
@@ -2797,10 +2958,12 @@ fun OddsTab(
 ) {
     val context = LocalContext.current
     val geminiKey = getGeminiApiKey(context)
+    val theOddsApiKey = getTheOddsApiKey(context)
 
+    var oddsApiResult by remember { mutableStateOf<OddsApiResult?>(null) }
     var geminiOdds by remember { mutableStateOf<GeminiMarketOdds?>(null) }
-    var isGeminiLoading by remember { mutableStateOf(false) }
-    var geminiTried by remember { mutableStateOf(false) }
+    var isFetchingExternalOdds by remember { mutableStateOf(false) }
+    var externalTried by remember { mutableStateOf(false) }
 
     val homeName = match.home?.name ?: "Hazai"
     val awayName = match.away?.name ?: "Vendég"
@@ -2816,25 +2979,38 @@ fun OddsTab(
     val apiHomeOdd = oddsList.find { it.name.equals("Home", ignoreCase = true) }?.value
     val hasStatPalOdds = !apiHomeOdd.isNullOrBlank()
 
-    LaunchedEffect(match, prematchOddsMatch, geminiKey) {
-        if (!hasStatPalOdds && !geminiTried && geminiKey.isNotBlank()) {
-            isGeminiLoading = true
-            geminiTried = true
-            val result = fetchOddsFromGemini(geminiKey, homeName, awayName)
-            if (result != null) {
-                geminiOdds = result
+    LaunchedEffect(match, prematchOddsMatch, theOddsApiKey, geminiKey) {
+        if (!hasStatPalOdds && !externalTried) {
+            isFetchingExternalOdds = true
+            externalTried = true
+
+            // 1. ELŐSZÖR PRÓBÁLJUK A THE ODDS API-T (ÖSSZES PIAC KÉRÉSE: 1X2, OVER/UNDER, SPREADS)
+            if (theOddsApiKey.isNotBlank()) {
+                val res = fetchOddsFromTheOddsApi(theOddsApiKey, match.leagueName, homeName, awayName)
+                if (res != null) {
+                    oddsApiResult = res
+                }
             }
-            isGeminiLoading = false
+
+            // 2. TARTALÉK PAIACOK KIEGÉSZÍTÉSE GEMINI-VEL (BTTS, FÉLIDŐ, CSAPAT-GÓLOK)
+            if (geminiKey.isNotBlank()) {
+                val gRes = fetchOddsFromGemini(geminiKey, homeName, awayName)
+                if (gRes != null) {
+                    geminiOdds = gRes
+                }
+            }
+
+            isFetchingExternalOdds = false
         }
     }
 
-    if (isLoadingOdds || isGeminiLoading) {
+    if (isLoadingOdds || isFetchingExternalOdds) {
         Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = colors.accentPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (isGeminiLoading) "🤖 Gemini gyűjti a valós oddsokat a netről..." else "Oddsok betöltése...",
+                    text = if (theOddsApiKey.isNotBlank()) "🎯 Az összes fogadási piac gyűjtése..." else "🤖 Odds adatok gyűjtése...",
                     color = colors.textMuted,
                     fontSize = 12.sp
                 )
@@ -2843,14 +3019,17 @@ fun OddsTab(
         return
     }
 
-    val homeOddVal = apiHomeOdd ?: geminiOdds?.home ?: "1.95"
-    val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value ?: geminiOdds?.draw ?: "3.40"
-    val awayOddVal = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value ?: geminiOdds?.away ?: "3.75"
+    val homeOddVal = apiHomeOdd ?: oddsApiResult?.home ?: geminiOdds?.home ?: "1.95"
+    val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value ?: oddsApiResult?.draw ?: geminiOdds?.draw ?: "3.40"
+    val awayOddVal = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value ?: oddsApiResult?.away ?: geminiOdds?.away ?: "3.75"
 
     val bttsYesVal = geminiOdds?.bttsYes ?: "1.75"
     val bttsNoVal = geminiOdds?.bttsNo ?: "1.95"
-    val over25Val = geminiOdds?.over25 ?: "1.85"
-    val under25Val = geminiOdds?.under25 ?: "1.90"
+    val over25Val = oddsApiResult?.over25 ?: geminiOdds?.over25 ?: "1.85"
+    val under25Val = oddsApiResult?.under25 ?: geminiOdds?.under25 ?: "1.90"
+    
+    val homeSpreadVal = oddsApiResult?.homeSpread ?: "1.90"
+    val awaySpreadVal = oddsApiResult?.awaySpread ?: "1.90"
     val comboVal = geminiOdds?.bttsOver25 ?: "2.35"
     
     val ht1Val = geminiOdds?.ht1 ?: "2.40"
@@ -2859,7 +3038,8 @@ fun OddsTab(
 
     val bookmakerName = when {
         !apiHomeOdd.isNullOrBlank() -> bookmaker?.name ?: "StatPal Odds"
-        geminiOdds != null -> "🤖 Gemini Web Odds (Valós)"
+        oddsApiResult != null -> oddsApiResult?.bookmakerName ?: "🎯 The Odds API (Teljes Piac)"
+        geminiOdds != null -> "🤖 Gemini Web Odds"
         else -> "⚡ Futár Smart Odds (Okos becslés)"
     }
 
@@ -2929,6 +3109,31 @@ fun OddsTab(
                         OddsBox("Under 2.5", under25Val, isSelected = isUnder, colors = colors, modifier = Modifier.weight(1f)) {
                             val v = under25Val.toDoubleOrNull() ?: 1.90
                             onToggleOdds(BetSlipItem(matchId, matchTitle, "Under 2.5 gól", v))
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("🛡️ HANDIKAP & ÁZSIAI PIACOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isHSp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai Handikap" }
+                        val isASp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég Handikap" }
+
+                        OddsBox("Hazai (+0.5/-0.5)", homeSpreadVal, isSelected = isHSp, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = homeSpreadVal.toDoubleOrNull() ?: 1.90
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai Handikap", v))
+                        }
+                        OddsBox("Vendég (+0.5/-0.5)", awaySpreadVal, isSelected = isASp, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = awaySpreadVal.toDoubleOrNull() ?: 1.90
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég Handikap", v))
                         }
                     }
                 }
@@ -3247,6 +3452,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
     var geminiKeyInput by remember { mutableStateOf(getGeminiApiKey(context)) }
+    var theOddsKeyInput by remember { mutableStateOf(getTheOddsApiKey(context)) }
 
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
     var cardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_cards", true)) }
@@ -3301,7 +3507,31 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Gemini API Kulcs (Web Odds kereséshez)",
+            text = "🎯 The Odds API Kulcs (Legjobb Odds-Forrás)",
+            color = colors.accentYellow,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = theOddsKeyInput,
+            onValueChange = { theOddsKeyInput = it },
+            label = { Text("The Odds API Key", color = colors.textMuted) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.accentYellow,
+                unfocusedBorderColor = colors.border,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Gemini API Kulcs (Web Odds tartalékhoz)",
             color = colors.accentPrimary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
@@ -3397,6 +3627,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
             onClick = {
                 saveApiKey(context, apiKeyInput)
                 saveGeminiApiKey(context, geminiKeyInput)
+                saveTheOddsApiKey(context, theOddsKeyInput)
                 Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
                 navController.popBackStack()
             },
