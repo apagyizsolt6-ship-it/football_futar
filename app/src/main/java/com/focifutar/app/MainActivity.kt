@@ -807,7 +807,7 @@ fun translateLeagueName(leagueName: String?): String {
         "NORWAY" to "🇳🇴 NORVÉGIA", "PANAMA" to "🇵🇦 PANAMA", "PARAGUAY" to "🇵🇾 PARAGUAY",
         "PERU" to "🇵🇪 PERU", "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA",
         "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA", "RUSSIA" to "🇷🇺 OROSZORSZÁG",
-        "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁳󠁣󠁴󠁿 SKÓCIA", "SERBIA" to "🇷🇸 SZERBIA",
+        "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 SKÓCIA", "SERBIA" to "🇷🇸 SZERBIA",
         "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA", "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA",
         "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SOUTH KOREA" to "🇰🇷 DÉL-KOREA", "SPAIN" to "🇪🇸 SPANYOLORSZÁG",
         "SRI LANKA" to "🇱🇰 SRI LANKA", "SWEDEN" to "🇸🇪 SVÉDORSZÁG", "SWITZERLAND" to "🇨🇭 SVÁJC",
@@ -1355,11 +1355,11 @@ fun MatchesListScreen(
     val featuredMatchPair = remember(leagues) {
         for (league in leagues) {
             val m = league.match.firstOrNull { isTopLeague(it.home?.name) || isLiveMatch(it) }
-            if (m != null) return@remember Pair(m, league.id)
+            if (m != null) return@remember Pair(m, league.id ?: league.name)
         }
         val fallbackLeague = leagues.firstOrNull()
         val fallbackMatch = fallbackLeague?.match?.firstOrNull()
-        if (fallbackMatch != null) Pair(fallbackMatch, fallbackLeague.id) else null
+        if (fallbackMatch != null) Pair(fallbackMatch, fallbackLeague.id ?: fallbackLeague.name) else null
     }
 
     val favoriteMatchesList = remember(leagues, favoriteIds) {
@@ -1367,7 +1367,7 @@ fun MatchesListScreen(
             league.match.filter { match ->
                 val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                 favoriteIds.contains(id)
-            }.map { Pair(it, league.id) }
+            }.map { Pair(it, league.id ?: league.name) }
         }
     }
 
@@ -1731,7 +1731,7 @@ fun MatchesListScreen(
                                 },
                                 {
                                     selectedMatchGlobal = matchItem
-                                    selectedLeagueIdGlobal = league.id
+                                    selectedLeagueIdGlobal = league.id ?: league.name
                                     navController.navigate("match_detail")
                                 }
                             )
@@ -1780,7 +1780,7 @@ fun MatchesListScreen(
                                     },
                                     {
                                         selectedMatchGlobal = matchItem
-                                        selectedLeagueIdGlobal = league.id
+                                        selectedLeagueIdGlobal = league.id ?: league.name
                                         navController.navigate("match_detail")
                                     }
                                 )
@@ -2414,7 +2414,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -2845,7 +2845,15 @@ fun MatchDetailScreen(
                 StandingsTab(colors)
             }
             5 -> {
-                OddsTab(match, prematchOddsMatch, isLoadingOdds, betSlipItems, colors, onToggleOdds)
+                OddsTab(
+                    match = match,
+                    leagueName = leagueId,
+                    prematchOddsMatch = prematchOddsMatch,
+                    isLoadingOdds = isLoadingOdds,
+                    betSlipItems = betSlipItems,
+                    colors = colors,
+                    onToggleOdds = onToggleOdds
+                )
             }
             6 -> {
                 TimelineTab(match, colors)
@@ -2950,6 +2958,7 @@ fun StandingsTab(colors: AppColors) {
 @Composable
 fun OddsTab(
     match: StatPalMatch,
+    leagueName: String?,
     prematchOddsMatch: PrematchOddsMatch?,
     isLoadingOdds: Boolean,
     betSlipItems: List<BetSlipItem>,
@@ -2984,15 +2993,15 @@ fun OddsTab(
             isFetchingExternalOdds = true
             externalTried = true
 
-            // 1. ELŐSZÖR PRÓBÁLJUK A THE ODDS API-T (ÖSSZES PIAC KÉRÉSE: 1X2, OVER/UNDER, SPREADS)
+            // 1. THE ODDS API HÍVÁS (JAVÍTVA: A LEAGUE NAME PARAMÉTER HASZNÁLATÁVAL)
             if (theOddsApiKey.isNotBlank()) {
-                val res = fetchOddsFromTheOddsApi(theOddsApiKey, match.leagueName, homeName, awayName)
+                val res = fetchOddsFromTheOddsApi(theOddsApiKey, leagueName, homeName, awayName)
                 if (res != null) {
                     oddsApiResult = res
                 }
             }
 
-            // 2. TARTALÉK PAIACOK KIEGÉSZÍTÉSE GEMINI-VEL (BTTS, FÉLIDŐ, CSAPAT-GÓLOK)
+            // 2. GEMINI FALLBACK HÍVÁS
             if (geminiKey.isNotBlank()) {
                 val gRes = fetchOddsFromGemini(geminiKey, homeName, awayName)
                 if (gRes != null) {
