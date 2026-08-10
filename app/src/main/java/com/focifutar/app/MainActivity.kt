@@ -235,7 +235,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun getFavoriteMatchIds(context: Context): Set<String> {
@@ -650,14 +650,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Értesítési engedély kérése futásidőben (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
             }
         }
         
-        // Előtér-szolgáltatás elindítása, hogy a háttérben is folyamatosan fusson és figyeljen
         val serviceIntent = Intent(this, MatchLiveService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -767,7 +765,7 @@ fun MatchesListScreen(
     var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isOnlyLiveFilter by remember { mutableStateOf(false) }
     var isTopLeaguesFilter by remember { mutableStateOf(false) }
-    var isFavoriteLeaguesFilter by remember { mutableStateOf(false) } // ÚJ: Kedvenc ligák szűrő
+    var isFavoriteLeaguesFilter by remember { mutableStateOf(false) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
@@ -1024,7 +1022,6 @@ fun MatchesListScreen(
                     Text(text = "🔍", fontSize = 12.sp)
                 }
 
-                // ÚJ: Kedvenc ligák gyorsszűrő gomb
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
@@ -1271,6 +1268,9 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
     var savedBets by remember { mutableStateOf(getSavedBets(context)) }
     var balance by remember { mutableStateOf(getVirtualBalance(context)) }
 
+    val totalStaked = savedBets.sumOf { it.stake }
+    val totalWonCount = savedBets.count { it.status == "NYERT" }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1303,6 +1303,7 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Vizuális Bankroll & Statisztika Kártya
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
             modifier = Modifier
@@ -1310,9 +1311,19 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                 .border(1.dp, colors.accentYellow, RoundedCornerShape(12.dp))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("VIRTUÁLIS BANKROLL", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("VIRTUÁLIS BANKROLL ÉS STATISZTIKA", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("${balance.toInt()} Ft", color = colors.accentYellow, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = colors.border)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Összes fogadás: ${savedBets.size} db", color = colors.textPrimary, fontSize = 12.sp)
+                    Text("Megjátszott tét: ${totalStaked.toInt()} Ft", color = colors.textMuted, fontSize = 12.sp)
+                }
             }
         }
 
@@ -1669,7 +1680,6 @@ fun MatchRow(
             )
 
             Column(modifier = Modifier.weight(1f)) {
-                // HAZAI CSAPAT + LAPOK
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1715,7 +1725,6 @@ fun MatchRow(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // VENDÉG CSAPAT + LAPOK
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(20.dp), fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1792,7 +1801,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
+    val tabs = listOf("H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ODDSOK", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -2031,7 +2040,6 @@ fun MatchDetailScreen(
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // ÚJ: Vizuális Forma Összehasonlító Kártya H2H alatt
                         if (homeFormStr.isNotBlank() || awayFormStr.isNotBlank()) {
                             item {
                                 Card(
@@ -2449,6 +2457,7 @@ fun BetSlipBar(
     onClear: () -> Unit,
     onSaveBet: (Double) -> Unit
 ) {
+    val context = LocalContext.current
     var isExpanded by remember { mutableStateOf(false) }
     var stakeInput by remember { mutableStateOf("1000") }
 
@@ -2535,6 +2544,48 @@ fun BetSlipBar(
                                 )
                             )
                         }
+
+                        // ÚJ: Gyors tét növelő gombok (+1000, +5000, MAX)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    val current = stakeInput.toDoubleOrNull() ?: 0.0
+                                    stakeInput = (current + 1000.0).toInt().toString()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
+                                border = BorderStroke(1.dp, colors.border)
+                            ) {
+                                Text("+1e", color = colors.textPrimary, fontSize = 11.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    val current = stakeInput.toDoubleOrNull() ?: 0.0
+                                    stakeInput = (current + 5000.0).toInt().toString()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
+                                border = BorderStroke(1.dp, colors.border)
+                            ) {
+                                Text("+5e", color = colors.textPrimary, fontSize = 11.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    val balance = getVirtualBalance(context)
+                                    stakeInput = balance.toInt().toString()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
+                                border = BorderStroke(1.dp, colors.accentYellow)
+                            ) {
+                                Text("MAX", color = colors.accentYellow, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -2649,7 +2700,6 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
 
-    // ÚJ: Értesítési kapcsolók állapota
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
     var cardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_cards", true)) }
     var statusNotif by remember { mutableStateOf(getNotificationPref(context, "notif_status", true)) }
