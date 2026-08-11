@@ -56,6 +56,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
@@ -442,7 +444,7 @@ fun checkFuzzyMatch(s1: String, s2: String): Boolean {
 }
 
 // ==========================================
-// GEMINI VISION & WEB ODDS ENGINE (GARANTÁLT STABIL REST VÉGPONT)
+// GEMINI VISION & STABIL KÉPBEOLVASÓ ENGINE
 // ==========================================
 data class GeminiMarketOdds(
     val home: String,
@@ -459,64 +461,68 @@ data class GeminiMarketOdds(
     val redCardYes: String
 )
 
-suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: String): List<BetSlipItem>? {
+suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<BetSlipItem>? {
     return withContext(Dispatchers.IO) {
         try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext null
-            val originalBitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            if (originalBitmap == null) return@withContext null
-
-            // Kép optimalizálása (max 1280px-re méretezés a stabil hálózati küldéshez)
-            val maxDim = 1280
-            val width = originalBitmap.width
-            val height = originalBitmap.height
+            // Fotó méretének optimalizálása (max 1024px szélesség/magasság a biztos és gyors API küldéshez)
+            val maxDim = 1024
+            val width = bitmap.width
+            val height = bitmap.height
             val scaledBitmap = if (width > maxDim || height > maxDim) {
                 val ratio = width.toFloat() / height.toFloat()
                 val targetWidth = if (width > height) maxDim else (maxDim * ratio).toInt()
                 val targetHeight = if (height > width) maxDim else (maxDim / ratio).toInt()
-                Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
+                Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
             } else {
-                originalBitmap
+                bitmap
             }
 
             val outputStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
             val imageBytes = outputStream.toByteArray()
             val base64Image = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
 
-            // Hivatalos, sziklaszilárd generateContent végpont
             val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             conn.doOutput = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
 
-            val promptText = "Elemezd ezt a szerencsejáték/Tippmix/sportfogadási szelvényt vagy képernyőképet! Keresd meg az összes fogadási eseményt. Minden eseményhez add meg egy JSON tömb elemeként: " +
-                    "1. 'matchTitle': A két csapat neve (Hazai vs Vendég formátumban). " +
-                    "2. 'choiceName': A kiválasztott tipp (pl. 'Over 2.5 gól', 'Mindkét csapat szerez gólt: Igen', '1', 'X', '2'). " +
-                    "3. 'odds': A tipphez tartozó odds tizedestörtként (pl. 1.74, 2.20, 2.51)."
+            val promptText = "Olvasd be ezt a Tippmix vagy sportfogadási szelvényt! Keresd meg a fogadási eseményeket! " +
+                    "Válaszolj KIZÁRÓLAG egy valid JSON tömbbel, ami az alábbi mezőket tartalmazza minden meccsnél:\n" +
+                    "- 'matchTitle': a két csapat neve (Hazai vs Vendég formátumban)\n" +
+                    "- 'choiceName': a kiválasztott tipp (pl. '1', 'X', '2', 'Over 2.5', 'Mindkét csapat gól: Igen')\n" +
+                    "- 'odds': a tipphez tartozó odds tizedestörtként (szám, pl. 1.85)"
 
-            val body = """
-                {
-                  "contents": [{
-                    "parts": [
-                      { "text": "$promptText" },
-                      {
-                        "inlineData": {
-                          "mimeType": "image/jpeg",
-                          "data": "$base64Image"
+            // Strukturált JsonObject építése hiba nélkül
+            val jsonPayload = JsonObject().apply {
+                val contentsArr = JsonArray().apply {
+                    val contentObj = JsonObject().apply {
+                        val partsArr = JsonArray().apply {
+                            add(JsonObject().apply { addProperty("text", promptText) })
+                            add(JsonObject().apply {
+                                add("inlineData", JsonObject().apply {
+                                    addProperty("mimeType", "image/jpeg")
+                                    addProperty("data", base64Image)
+                                })
+                            })
                         }
-                      }
-                    ]
-                  }],
-                  "generationConfig": {
-                    "responseMimeType": "application/json"
-                  }
+                        add("parts", partsArr)
+                    }
+                    add(contentObj)
                 }
-            """.trimIndent()
+                add("contents", contentsArr)
+                add("generationConfig", JsonObject().apply {
+                    addProperty("responseMimeType", "application/json")
+                })
+            }
 
-            conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
+            val writer = conn.outputStream.bufferedWriter(Charsets.UTF_8)
+            writer.write(jsonPayload.toString())
+            writer.flush()
+            writer.close()
 
             if (conn.responseCode == 200) {
                 val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
@@ -535,7 +541,6 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
                         }
                     }
 
-                    // Markdown kódblokkok eltávolítása és tisztítás
                     val cleanedText = rawText.replace("```json", "").replace("```", "").trim()
                     val jsonMatcher = Regex("\\[[\\s\\S]*?\\]").find(cleanedText)
                     val finalJsonString = jsonMatcher?.value ?: cleanedText
@@ -555,6 +560,9 @@ suspend fun processTicketImageWithGemini(context: Context, uri: Uri, apiKey: Str
                     }
                     return@withContext resultList
                 }
+            } else {
+                val errStream = conn.errorStream?.bufferedReader()?.use { it.readText() }
+                android.util.Log.e("GeminiScanError", "HTTP Code ${conn.responseCode}: $errStream")
             }
             null
         } catch (e: Exception) {
@@ -1255,6 +1263,7 @@ fun MatchesListScreen(
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
     var isScanningTicket by remember { mutableStateOf(false) }
+    var showScanSourceDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -1262,26 +1271,73 @@ fun MatchesListScreen(
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
-    // SZELVÉNY BEOLVASÓ LAUNCHER
-    val ticketImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            val geminiKey = getGeminiApiKey(context)
-            if (geminiKey.isBlank()) {
-                Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️) a képfelismeréshez!", Toast.LENGTH_LONG).show()
-            } else {
-                isScanningTicket = true
-                coroutineScope.launch {
-                    val scanned = processTicketImageWithGemini(context, uri, geminiKey)
-                    isScanningTicket = false
-                    if (!scanned.isNullOrEmpty()) {
-                        onScanTicketItems(scanned)
-                        Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről!", Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt. Próbáld újra egy tisztább képpel!", Toast.LENGTH_LONG).show()
-                    }
+    // DEDIKÁLT BEOLVASÁSI LOGIKA (BITMAP PROCESSOR)
+    val processBitmapScan: (Bitmap) -> Unit = { bitmap ->
+        val geminiKey = getGeminiApiKey(context)
+        if (geminiKey.isBlank()) {
+            Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️)!", Toast.LENGTH_LONG).show()
+        } else {
+            isScanningTicket = true
+            coroutineScope.launch {
+                val scanned = processTicketBitmapWithGemini(bitmap, geminiKey)
+                isScanningTicket = false
+                if (!scanned.isNullOrEmpty()) {
+                    onScanTicketItems(scanned)
+                    Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről!", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt. Próbáld újra egy tisztább fotóval!", Toast.LENGTH_LONG).show()
                 }
             }
         }
+    }
+
+    // 1. GALÉRIA LAUNCHER
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                if (bitmap != null) {
+                    processBitmapScan(bitmap)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Nem sikerült betölteni a képet!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // 2. ÉLŐ KAMERA LAUNCHER (FOTÓZÁS)
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            processBitmapScan(bitmap)
+        }
+    }
+
+    // SZELVÉNY BEOLVASÓ FORRÁS VÁLASZTÓ DIALOG
+    if (showScanSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showScanSourceDialog = false },
+            title = { Text("📷 Szelvény Beolvasása", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("Hogyan szeretnéd beolvasni a Tippmix / sportfogadási szelvényt?", color = colors.textMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showScanSourceDialog = false
+                    cameraLauncher.launch(null)
+                }) {
+                    Text("📸 Fotózás (Kamera)", color = colors.accentPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showScanSourceDialog = false
+                    galleryLauncher.launch("image/*")
+                }) {
+                    Text("🖼️ Galéria", color = colors.textPrimary)
+                }
+            },
+            containerColor = colors.cardBackground
+        )
     }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
@@ -1593,7 +1649,7 @@ fun MatchesListScreen(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(if (isScanningTicket) colors.accentYellow else colors.cardBackground)
-                            .clickable { ticketImageLauncher.launch("image/*") }
+                            .clickable { showScanSourceDialog = true }
                             .padding(8.dp)
                     ) {
                         Text(text = if (isScanningTicket) "⏳" else "📷", fontSize = 13.sp)
@@ -3403,26 +3459,65 @@ fun BetSlipBar(
     var isExpanded by remember { mutableStateOf(false) }
     var stakeInput by remember { mutableStateOf("1000") }
     var isScanningInBar by remember { mutableStateOf(false) }
+    var showBarScanSourceDialog by remember { mutableStateOf(false) }
 
-    val barImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            val geminiKey = getGeminiApiKey(context)
-            if (geminiKey.isBlank()) {
-                Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️)!", Toast.LENGTH_LONG).show()
-            } else {
-                isScanningInBar = true
-                coroutineScope.launch {
-                    val scanned = processTicketImageWithGemini(context, uri, geminiKey)
-                    isScanningInBar = false
-                    if (!scanned.isNullOrEmpty()) {
-                        onScanTicketItems(scanned)
-                        Toast.makeText(context, "🎉 ${scanned.size} tipp beolvasva!", Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt.", Toast.LENGTH_LONG).show()
-                    }
+    val processBarBitmapScan: (Bitmap) -> Unit = { bitmap ->
+        val geminiKey = getGeminiApiKey(context)
+        if (geminiKey.isBlank()) {
+            Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️)!", Toast.LENGTH_LONG).show()
+        } else {
+            isScanningInBar = true
+            coroutineScope.launch {
+                val scanned = processTicketBitmapWithGemini(bitmap, geminiKey)
+                isScanningInBar = false
+                if (!scanned.isNullOrEmpty()) {
+                    onScanTicketItems(scanned)
+                    Toast.makeText(context, "🎉 ${scanned.size} tipp beolvasva!", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt.", Toast.LENGTH_LONG).show()
                 }
             }
         }
+    }
+
+    val barGalleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                if (bitmap != null) processBarBitmapScan(bitmap)
+            } catch (_: Exception) {}
+        }
+    }
+
+    val barCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+        if (bitmap != null) processBarBitmapScan(bitmap)
+    }
+
+    if (showBarScanSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showBarScanSourceDialog = false },
+            title = { Text("📷 Szelvény Beolvasása", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("Hogyan szeretnéd beolvasni a plusz fotót?", color = colors.textMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBarScanSourceDialog = false
+                    barCameraLauncher.launch(null)
+                }) {
+                    Text("📸 Fotózás (Kamera)", color = colors.accentPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showBarScanSourceDialog = false
+                    barGalleryLauncher.launch("image/*")
+                }) {
+                    Text("🖼️ Galéria", color = colors.textPrimary)
+                }
+            },
+            containerColor = colors.cardBackground
+        )
     }
 
     val totalOdds = remember(items) {
@@ -3571,7 +3666,7 @@ fun BetSlipBar(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = { barImageLauncher.launch("image/*") },
+                                onClick = { showBarScanSourceDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
                                 border = BorderStroke(1.dp, colors.accentYellow),
                                 shape = RoundedCornerShape(8.dp),
