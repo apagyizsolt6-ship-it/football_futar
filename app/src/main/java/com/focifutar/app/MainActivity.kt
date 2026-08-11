@@ -60,11 +60,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Header
-import retrofit2.http.Query
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -291,71 +286,6 @@ fun saveHighlightlyApiKey(context: Context, key: String) {
 fun getHighlightlyApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getString("highlightly_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
-}
-
-// Highlightly API Modellek és Service
-data class HighlightResponse(
-    val data: List<HighlightItem>,
-    val pagination: Pagination
-)
-
-data class HighlightItem(
-    val id: Int,
-    val type: String,
-    val imgUrl: String?,
-    val title: String,
-    val url: String?,
-    val embedUrl: String?,
-    val category: String,
-    val match: HighlightMatch
-)
-
-data class HighlightMatch(
-    val id: Long,
-    val round: String,
-    val date: String,
-    val homeTeam: TeamInfo,
-    val awayTeam: TeamInfo,
-    val league: LeagueInfo
-)
-
-data class TeamInfo(
-    val id: Int,
-    val name: String,
-    val logo: String?
-)
-
-data class LeagueInfo(
-    val id: Int,
-    val name: String,
-    val logo: String?
-)
-
-data class Pagination(
-    val totalCount: Int,
-    val offset: Int,
-    val limit: Int
-)
-
-interface HighlightlyService {
-    @GET("highlights")
-    suspend fun getHighlights(
-        @Header("x-rapidapi-key") apiKey: String,
-        @Header("x-rapidapi-host") apiHost: String = "football-highlights-api.p.rapidapi.com",
-        @Query("team") teamName: String? = null
-    ): HighlightResponse
-
-    companion object {
-        private const val BASE_URL = "https://football-highlights-api.p.rapidapi.com/"
-        
-        fun create(): HighlightlyService {
-            return Retrofit.Builder()
-                .baseUrl(BASE_URL)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build()
-                .create(HighlightlyService::class.java)
-        }
-    }
 }
 
 fun getTheOddsApiSportKey(leagueName: String?): String {
@@ -2537,7 +2467,6 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    // Kibővítve a "VIDEÓK" füllel
     val tabs = listOf("ODDSOK", "TABELLA", "STATISZTIKA", "ESEMÉNYEK", "AI TIPP", "H2H", "HIÁNYZÓK", "KEZDŐK", "VIDEÓK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
@@ -2556,7 +2485,6 @@ fun MatchDetailScreen(
     var prematchOddsMatch by remember { mutableStateOf<PrematchOddsMatch?>(null) }
     var isLoadingOdds by remember { mutableStateOf(false) }
 
-    // Highlightly videók állapota
     var highlights by remember { mutableStateOf<List<HighlightItem>>(emptyList()) }
     var isLoadingHighlights by remember { mutableStateOf(false) }
 
