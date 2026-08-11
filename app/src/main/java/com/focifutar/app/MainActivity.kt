@@ -613,6 +613,23 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
     return false
 }
 
+fun isUpcomingMatch(match: StatPalMatch): Boolean {
+    if (isLiveMatch(match)) return false
+    val statusStr = match.status?.trim()?.uppercase() ?: ""
+    val timeStr = match.time?.trim()?.uppercase() ?: ""
+    val rawStatus = (statusStr.ifBlank { timeStr }).uppercase()
+    
+    if (rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || 
+        rawStatus == "AET" || rawStatus == "AP" || rawStatus == "ENDED" ||
+        rawStatus.contains("POSTP") || rawStatus.contains("PPD") || 
+        rawStatus.contains("CANC") || rawStatus.contains("ABAND") ||
+        rawStatus.contains("SUSP") || rawStatus.contains("INTERR") ||
+        rawStatus.contains("ELHAL") || rawStatus.contains("ELMARADT")) {
+        return false
+    }
+    return true
+}
+
 fun getMatchTimestamp(match: StatPalMatch): Long {
     if (isLiveMatch(match)) return 0L
 
@@ -1152,7 +1169,10 @@ fun MatchesListScreen(
         leagues.sumOf { league -> league.match.count { isLiveMatch(it) } }
     }
 
-    val flatChronologicalList = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, selectedTimeFilterHours, searchQuery, favoriteLeagueKeys) {
+    val dayOffset = calculateDayOffset(selectedCalendar)
+    val isPastDay = dayOffset < 0
+
+    val flatChronologicalList = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, selectedTimeFilterHours, searchQuery, favoriteLeagueKeys, isPastDay) {
         if (selectedTimeFilterHours == null) return@remember emptyList<FlatMatchItem>()
 
         val allMatchesWithLeague = mutableListOf<Pair<StatPalMatch, StatPalLeague>>()
@@ -1163,7 +1183,13 @@ fun MatchesListScreen(
                 if (!isTopLeaguesFilter || isTopLeague(league.name)) {
                     league.match.forEach { match ->
                         var keep = true
-                        if (isOnlyLiveFilter && !isLiveMatch(match)) keep = false
+                        if (isOnlyLiveFilter) {
+                            if (!isLiveMatch(match)) keep = false
+                        } else {
+                            if (!isPastDay) {
+                                if (!isUpcomingMatch(match)) keep = false
+                            }
+                        }
                         if (selectedTimeFilterHours != null && !isMatchWithinHours(match, selectedTimeFilterHours!!)) keep = false
                         if (searchQuery.isNotBlank()) {
                             val q = searchQuery.lowercase().trim()
@@ -1195,7 +1221,7 @@ fun MatchesListScreen(
         result
     }
 
-    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, searchQuery, favoriteLeagueKeys) {
+    val filteredLeagues = remember(leagues, isOnlyLiveFilter, isTopLeaguesFilter, isFavoriteLeaguesFilter, searchQuery, favoriteLeagueKeys, isPastDay) {
         if (selectedTimeFilterHours != null) return@remember emptyList<StatPalLeague>()
 
         val baseList = leagues.mapNotNull { league ->
@@ -1205,7 +1231,15 @@ fun MatchesListScreen(
             }
 
             val matches = league.match
-            val matchesAfterLive = if (isOnlyLiveFilter) matches.filter { isLiveMatch(it) } else matches
+            val matchesAfterLive = if (isOnlyLiveFilter) {
+                matches.filter { isLiveMatch(it) }
+            } else {
+                if (!isPastDay) {
+                    matches.filter { isUpcomingMatch(it) }
+                } else {
+                    matches
+                }
+            }
 
             val matchesAfterSearch = if (searchQuery.isNotBlank()) {
                 val q = searchQuery.lowercase().trim()
@@ -1233,11 +1267,11 @@ fun MatchesListScreen(
 
     val featuredMatchPair = remember(leagues) {
         for (league in leagues) {
-            val m = league.match.firstOrNull { isTopLeague(it.home?.name) || isLiveMatch(it) }
+            val m = league.match.firstOrNull { (isTopLeague(it.home?.name) || isLiveMatch(it)) && isUpcomingMatch(it) }
             if (m != null) return@remember Pair(m, league.id ?: league.name)
         }
         val fallbackLeague = leagues.firstOrNull()
-        val fallbackMatch = fallbackLeague?.match?.firstOrNull()
+        val fallbackMatch = fallbackLeague?.match?.firstOrNull { isUpcomingMatch(it) }
         if (fallbackMatch != null) Pair(fallbackMatch, fallbackLeague.id ?: fallbackLeague.name) else null
     }
 
@@ -1245,7 +1279,7 @@ fun MatchesListScreen(
         leagues.flatMap { league ->
             league.match.filter { match ->
                 val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
-                favoriteIds.contains(id)
+                favoriteIds.contains(id) && isUpcomingMatch(match)
             }.map { Pair(it, league.id ?: league.name) }
         }
     }
@@ -1523,7 +1557,7 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                if (featuredMatchPair != null && !isFeaturedDismissed && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
+                if (featuredMatchPair != null && !isFeaturedDismissed && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null && !isPastDay) {
                     item {
                         FeaturedMatchBanner(
                             match = featuredMatchPair.first,
@@ -1538,7 +1572,7 @@ fun MatchesListScreen(
                     }
                 }
 
-                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
+                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null && !isPastDay) {
                     item {
                         LeagueHeader(
                             title = "⭐ KEDVENC MECCSEK",
