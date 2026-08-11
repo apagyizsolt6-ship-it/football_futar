@@ -5,6 +5,7 @@ import com.google.gson.reflect.TypeToken
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -72,5 +73,29 @@ object StatPalClient {
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(StatPalService::class.java)
+    }
+}
+
+// ==========================================
+// HIGHLIGHTLY API SZERVIZ
+// ==========================================
+interface HighlightlyService {
+    @GET("highlights")
+    suspend fun getHighlights(
+        @Header("x-rapidapi-key") apiKey: String,
+        @Header("x-rapidapi-host") apiHost: String = "football-highlights-api.p.rapidapi.com",
+        @Query("team") teamName: String? = null
+    ): HighlightResponse
+
+    companion object {
+        private const val BASE_URL = "https://football-highlights-api.p.rapidapi.com/"
+        
+        fun create(): HighlightlyService {
+            return Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(HighlightlyService::class.java)
+        }
     }
 }
