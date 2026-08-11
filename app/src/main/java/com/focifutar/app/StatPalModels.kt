@@ -337,3 +337,49 @@ data class StatScoreTotal(
 data class StatDescription(
     val value: String? = null
 )
+
+// ==========================================
+// HIGHLIGHTLY API MODELLEK
+// ==========================================
+data class HighlightResponse(
+    val data: List<HighlightItem>,
+    val pagination: Pagination
+)
+
+data class HighlightItem(
+    val id: Int,
+    val type: String,
+    val imgUrl: String?,
+    val title: String,
+    val url: String?,
+    val embedUrl: String?,
+    val category: String,
+    val match: HighlightMatch
+)
+
+data class HighlightMatch(
+    val id: Long,
+    val round: String,
+    val date: String,
+    val homeTeam: TeamInfo,
+    val awayTeam: TeamInfo,
+    val league: LeagueInfo
+)
+
+data class TeamInfo(
+    val id: Int,
+    val name: String,
+    val logo: String?
+)
+
+data class LeagueInfo(
+    val id: Int,
+    val name: String,
+    val logo: String?
+)
+
+data class Pagination(
+    val totalCount: Int,
+    val offset: Int,
+    val limit: Int
+)
