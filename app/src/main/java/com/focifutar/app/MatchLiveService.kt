@@ -13,10 +13,6 @@ import kotlinx.coroutines.*
 
 class MatchLiveService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val previousScoresMap = mutableMapOf<String, String>()
-    private val finishedMatchesMap = mutableSetOf<String>()
-    private val halftimeMatchesMap = mutableSetOf<String>()
-    private val processedEventsMap = mutableMapOf<String, MutableSet<String>>()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, createNotification())
@@ -32,6 +28,7 @@ class MatchLiveService : Service() {
                     if (apiKey.isNotBlank() && favoriteIds.isNotEmpty()) {
                         val response = StatPalClient.service.getDailyMatches(apiKey, 0)
                         val leagues = response.liveMatches?.league.orEmpty()
+                        val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
                         leagues.flatMap { it.match }.forEach { m ->
                             val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
@@ -45,36 +42,41 @@ class MatchLiveService : Service() {
                                 val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
                                 val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
 
-                                // Gól ellenőrzés
-                                if (previousScoresMap.containsKey(id) && isLiveMatch(m)) {
-                                    val oldScore = previousScoresMap[id]
-                                    if (oldScore != null && oldScore != scoreStr) {
+                                val savedScoreKey = "saved_score_$id"
+                                val oldScore = prefs.getString(savedScoreKey, null)
+
+                                // 1. Gól ellenőrzés globális szűréssel
+                                if (oldScore != null && oldScore != scoreStr && isLiveMatch(m)) {
+                                    val goalEventKey = "goal_${id}_${scoreStr}"
+                                    if (!isEventAlreadyProcessed(context, goalEventKey)) {
+                                        markEventAsProcessed(context, goalEventKey)
                                         sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
                                     }
                                 }
-                                previousScoresMap[id] = scoreStr
+                                prefs.edit().putString(savedScoreKey, scoreStr).apply()
 
-                                // Félidő ellenőrzés
-                                if (isHtNow && !halftimeMatchesMap.contains(id)) {
-                                    halftimeMatchesMap.add(id)
+                                // 2. Félidő ellenőrzés
+                                val htEventKey = "ht_$id"
+                                if (isHtNow && !isEventAlreadyProcessed(context, htEventKey)) {
+                                    markEventAsProcessed(context, htEventKey)
                                     sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
                                 }
 
-                                // Meccs vége ellenőrzés
-                                if (isFinishedNow && !finishedMatchesMap.contains(id)) {
-                                    finishedMatchesMap.add(id)
+                                // 3. Meccs vége ellenőrzés
+                                val ftEventKey = "ft_$id"
+                                if (isFinishedNow && !isEventAlreadyProcessed(context, ftEventKey)) {
+                                    markEventAsProcessed(context, ftEventKey)
                                     sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                                 }
 
-                                // Sárga és piros lapok ellenőrzése
+                                // 4. Sárga és piros lapok ellenőrzése
                                 val events = m.events?.event.orEmpty()
-                                val currentProcessed = processedEventsMap.getOrPut(id) { mutableSetOf() }
                                 events.forEach { event ->
                                     val type = event.type?.lowercase() ?: ""
                                     if (type.contains("yellow") || type.contains("red")) {
-                                        val eventKey = "${event.minute}_${event.player}_${event.type}"
-                                        if (!currentProcessed.contains(eventKey)) {
-                                            currentProcessed.add(eventKey)
+                                        val eventKey = "card_${id}_${event.minute}_${event.player}_${event.type}"
+                                        if (!isEventAlreadyProcessed(context, eventKey)) {
+                                            markEventAsProcessed(context, eventKey)
                                             val isRed = type.contains("red")
                                             val cardIcon = if (isRed) "🟥" else "🟨"
                                             val cardName = if (isRed) "Piros lap" else "Sárga lap"
@@ -87,8 +89,6 @@ class MatchLiveService : Service() {
                     }
                 } catch (_: Exception) {}
 
-                // OPTIMALIZÁLT VÁRAKOZÁSI IDŐ (50 000 lekéréses limithez):
-                // Élő kedvenc esetén 15 másodperc, egyébként 30 másodperc (5 perc helyett).
                 if (hasActiveLiveFavorites) {
                     delay(15000L)
                 } else {
