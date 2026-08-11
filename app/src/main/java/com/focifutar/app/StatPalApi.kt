@@ -44,6 +44,12 @@ interface StatPalService {
         @Path("league_id") leagueId: String,
         @Query("access_key") apiKey: String
     ): StatPalPrematchOddsResponse
+
+    @GET("api/v2/soccer/leagues/{league_id}/standings")
+    suspend fun getLeagueStandings(
+        @Path("league_id") leagueId: String,
+        @Query("access_key") apiKey: String
+    ): StatPalStandingsResponse
 }
 
 object StatPalClient {
