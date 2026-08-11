@@ -1091,13 +1091,6 @@ fun MatchesListScreen(
                 val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                 val newScoresMap = mutableMapOf<String, String>()
-                val newlyFinished = finishedMatchesMap.toMutableSet()
-                val newlyHt = halftimeMatchesMap.toMutableSet()
-
-                val goalsEnabled = getNotificationPref(context, "notif_goals", true)
-                val yellowCardsEnabled = getNotificationPref(context, "notif_yellow_cards", true)
-                val redCardsEnabled = getNotificationPref(context, "notif_red_cards", true)
-                val statusEnabled = getNotificationPref(context, "notif_status", true)
 
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
@@ -1105,19 +1098,10 @@ fun MatchesListScreen(
                     newScoresMap[id] = scoreStr
 
                     val isFav = favoriteIds.contains(id)
-                    val rawStatus = (m.status ?: m.time ?: "").uppercase()
                     val isLiveNow = isLiveMatch(m)
-                    val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
-                    val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
 
                     if (isFav) {
-                        val matchStartedKey = "match_started_$id"
-                        if (isLiveNow && !isEventAlreadyProcessed(context, matchStartedKey) && statusEnabled) {
-                            markEventAsProcessed(context, matchStartedKey)
-                            sendSystemNotification(context, "⚽ Mérkőzés Kezdete", "${m.home?.name} - ${m.away?.name} elkezdődött!")
-                        }
-
-                        if (previousScoresMap.containsKey(id) && isLiveNow && goalsEnabled) {
+                        if (previousScoresMap.containsKey(id) && isLiveNow) {
                             val oldScore = previousScoresMap[id] ?: "0-0"
                             if (oldScore != scoreStr && oldScore != "null-null" && oldScore != "?-?" && oldScore != "0-0") {
                                 val oldParts = oldScore.split("-")
@@ -1126,55 +1110,8 @@ fun MatchesListScreen(
                                 val newTotal = (newParts.getOrNull(0)?.toIntOrNull() ?: 0) + (newParts.getOrNull(1)?.toIntOrNull() ?: 0)
 
                                 if (newTotal > oldTotal) {
-                                    val goalEventKey = "goal_${id}_${scoreStr}"
-                                    if (!isEventAlreadyProcessed(context, goalEventKey)) {
-                                        markEventAsProcessed(context, goalEventKey)
-                                        sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
-                                        
-                                        coroutineScope.launch {
-                                            flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
-                                            delay(15000L)
-                                            flashingMatchesState = flashingMatchesState - id
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        val htEventKey = "ht_${id}"
-                        if (isHtNow && !newlyHt.contains(id) && !isEventAlreadyProcessed(context, htEventKey) && statusEnabled) {
-                            markEventAsProcessed(context, htEventKey)
-                            newlyHt.add(id)
-                            sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
-                        }
-
-                        val ftEventKey = "ft_${id}"
-                        if (isFinishedNow && !newlyFinished.contains(id) && !isEventAlreadyProcessed(context, ftEventKey) && statusEnabled) {
-                            markEventAsProcessed(context, ftEventKey)
-                            newlyFinished.add(id)
-                            sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
-                        }
-
-                        val events = m.events?.event.orEmpty()
-                        events.forEach { event ->
-                            val type = event.type?.lowercase() ?: ""
-                            val isYellow = type.contains("yellow")
-                            val isRed = type.contains("red")
-
-                            val shouldNotify = (isYellow && yellowCardsEnabled) || (isRed && redCardsEnabled)
-
-                            if (shouldNotify) {
-                                val eventKey = "card_${id}_${event.minute}_${event.player}_${event.type}"
-                                if (!isEventAlreadyProcessed(context, eventKey)) {
-                                    markEventAsProcessed(context, eventKey)
-                                    val cardIcon = if (isRed) "🟥" else "🟨"
-                                    val cardName = if (isRed) "Piros lap" else "Sárga lap"
-                                    val cardText = "$cardIcon $cardName (${event.minute}'): ${event.player} (${m.home?.name} - ${m.away?.name})"
-                                    sendSystemNotification(context, "⚠️ Lap esemény", cardText)
-
                                     coroutineScope.launch {
-                                        val flashColor = if (isRed) Color(0xFFEF4444) else Color(0xFFEAB308)
-                                        flashingMatchesState = flashingMatchesState + (id to flashColor)
+                                        flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
                                         delay(15000L)
                                         flashingMatchesState = flashingMatchesState - id
                                     }
@@ -1184,8 +1121,6 @@ fun MatchesListScreen(
                     }
                 }
                 previousScoresMap = newScoresMap
-                finishedMatchesMap = newlyFinished
-                halftimeMatchesMap = newlyHt
 
                 if (validLeagues.isNotEmpty()) {
                     leagues = validLeagues
@@ -1791,21 +1726,17 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
 
                     val choice = item.choiceName
                     val isChoiceWon = when {
-                        // 1X2
                         choice.contains("1") && !choice.contains("1X") && !choice.contains("12") && !choice.contains("DNB") && !choice.contains("+") && hG > aG -> true
                         choice.contains("X") && !choice.contains("1X") && !choice.contains("X2") && !choice.contains("+") && hG == aG -> true
                         choice.contains("2") && !choice.contains("X2") && !choice.contains("12") && !choice.contains("DNB") && !choice.contains("+") && aG > hG -> true
                         
-                        // Double Chance
                         choice.contains("1X") && (hG > aG || hG == aG) -> true
                         choice.contains("12") && hG != aG -> true
                         choice.contains("X2") && (aG > hG || hG == aG) -> true
                         
-                        // BTS / GG
                         (choice.contains("Gól-gól (Igen)") || choice.contains("BTS (Igen)")) && !choice.contains("GG + Over") && hG > 0 && aG > 0 -> true
                         (choice.contains("Gól-gól (Nem)") || choice.contains("BTS (Nem)")) && !(hG > 0 && aG > 0) -> true
                         
-                        // Over / Under goals
                         choice.contains("Over 2.5") && !choice.contains("GG + Over") && (hG + aG) > 2 -> true
                         choice.contains("Under 2.5") && (hG + aG) < 3 -> true
                         choice.contains("Over 0.5") && !choice.contains("Hazai") && !choice.contains("Vendég") && (hG + aG) > 0 -> true
@@ -1817,41 +1748,33 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                         choice.contains("Over 4.5") && (hG + aG) > 4 -> true
                         choice.contains("Under 4.5") && (hG + aG) < 5 -> true
                         
-                        // GG + Over 2.5
                         choice.contains("GG + Over 2.5") && (hG > 0 && aG > 0 && (hG + aG) > 2) -> true
 
-                        // Gólszám sávok
                         choice.contains("Gólszám: 0-1") && (hG + aG) in 0..1 -> true
                         choice.contains("Gólszám: 2-3") && (hG + aG) in 2..3 -> true
                         choice.contains("Gólszám: 4-5") && (hG + aG) in 4..5 -> true
                         choice.contains("Gólszám: 6+") && (hG + aG) >= 6 -> true
 
-                        // Hazai csapat gólok
                         choice.contains("Hazai gól Over 0.5") && hG >= 1 -> true
                         choice.contains("Hazai gól Over 1.5") && hG >= 2 -> true
                         choice.contains("Hazai gól Over 2.5") && hG >= 3 -> true
                         choice.contains("Hazai gól Over 3.5") && hG >= 4 -> true
 
-                        // Vendég csapat gólok
                         choice.contains("Vendég gól Over 0.5") && aG >= 1 -> true
                         choice.contains("Vendég gól Over 1.5") && aG >= 2 -> true
                         choice.contains("Vendég gól Over 2.5") && aG >= 3 -> true
                         choice.contains("Vendég gól Over 3.5") && aG >= 4 -> true
 
-                        // 1X2 + BTS / Over kombók
                         choice.contains("1 + BTS") && hG > aG && hG > 0 && aG > 0 -> true
                         choice.contains("1 + Over 1.5") && hG > aG && (hG + aG) > 1 -> true
                         choice.contains("1 + Over 2.5") && hG > aG && (hG + aG) > 2 -> true
 
-                        // Lapok & Szögletek
                         choice.contains("Lapok Over 3.5") && totalCards > 3 -> true
                         choice.contains("Lapok Under 3.5") && totalCards < 4 -> true
                         choice.contains("Szögletek Over 8.5") && (hG + aG + 7) > 8 -> true
 
-                        // Pontos végeredmény
                         choice.contains("Pontos eredmény:") && choice.contains("$hG-$aG") -> true
 
-                        // DNB & Handikap
                         choice.contains("DNB Hazai") && hG > aG -> true
                         choice.contains("DNB Vendég") && aG > hG -> true
                         choice.contains("Hazai Handikap") && (hG - 1.5) > aG -> true
@@ -3104,7 +3027,6 @@ fun OddsTab(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Vízszintes kategória sáv (Sub-tabs)
         ScrollableTabRow(
             selectedTabIndex = selectedOddsTab,
             containerColor = colors.cardBackground,
@@ -3135,7 +3057,6 @@ fun OddsTab(
         ) {
             when (selectedOddsTab) {
                 0 -> {
-                    // 1. 🔥 FŐ PIACOK
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3230,7 +3151,6 @@ fun OddsTab(
                     }
                 }
                 1 -> {
-                    // 1. ⚽ GÓLOK
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3334,7 +3254,6 @@ fun OddsTab(
                     }
                 }
                 2 -> {
-                    // 2. ⏱️ FÉLIDŐ
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3389,7 +3308,6 @@ fun OddsTab(
                     }
                 }
                 3 -> {
-                    // 3. 🏠 CSAPATOK
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3444,7 +3362,6 @@ fun OddsTab(
                     }
                 }
                 4 -> {
-                    // 4. ⚡ KOMBI & EGYÉB
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
