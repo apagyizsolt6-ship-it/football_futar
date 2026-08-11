@@ -936,59 +936,7 @@ fun sendSystemNotification(context: Context, title: String, message: String) {
     notificationManager.notify(System.currentTimeMillis().toInt(), notification)
 }
 
-class GoalCheckWorker(appContext: Context, workerParams: WorkerParameters) : CoroutineWorker(appContext, workerParams) {
-    override suspend fun doWork(): Result {
-        val context = applicationContext
-        val apiKey = getApiKey(context)
-        if (apiKey.isBlank()) return Result.success()
 
-        try {
-            val response = StatPalClient.service.getDailyMatches(apiKey, 0)
-            val leagues = response.liveMatches?.league.orEmpty()
-            val favoriteIds = getFavoriteMatchIds(context)
-            val notifGoals = getNotificationPref(context, "notif_goals", true)
-
-            leagues.flatMap { it.match }.forEach { match ->
-                val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
-                val isFav = favoriteIds.contains(id)
-
-                if (isFav && isUpcomingMatch(match)) {
-                    val dateStr = match.date ?: ""
-                    val timeStr = match.time ?: match.status ?: ""
-                    if (timeStr.contains(":")) {
-                        try {
-                            val utcFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).apply {
-                                timeZone = TimeZone.getTimeZone("UTC")
-                            }
-                            val parsedDate = utcFormat.parse("${if (dateStr.isNotBlank()) dateStr else "01.01.2026"} $timeStr")
-                            if (parsedDate != null) {
-                                val diffMs = parsedDate.time - System.currentTimeMillis()
-                                val diffMins = diffMs / (1000 * 60)
-                                if (diffMins in 0..16) {
-                                    val eventKey = "start_notif_${id}"
-                                    if (!isEventAlreadyProcessed(context, eventKey)) {
-                                        sendSystemNotification(context, "Mérkőzés Emlékeztető ⚽", "15 perc múlva kezdődik: ${match.home?.name} vs ${match.away?.name}")
-                                        markEventAsProcessed(context, eventKey)
-                                    }
-                                }
-                            }
-                        } catch (_: Exception) {}
-                    }
-                }
-
-                if (isFav && isLiveMatch(match) && notifGoals) {
-                    val scoreStr = "${match.home?.goals ?: "0"}-${match.away?.goals ?: "0"}"
-                    val eventKey = "goal_${id}_$scoreStr"
-                    if (!isEventAlreadyProcessed(context, eventKey)) {
-                        sendSystemNotification(context, "GÓL! ⚽", "${match.home?.name} ${match.home?.goals} - ${match.away?.goals} ${match.away?.name}")
-                        markEventAsProcessed(context, eventKey)
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return Result.success()
-    }
-}
 
 var selectedMatchGlobal: StatPalMatch? = null
 var selectedLeagueIdGlobal: String? = null
