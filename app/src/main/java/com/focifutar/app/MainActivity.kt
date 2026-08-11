@@ -1056,8 +1056,6 @@ fun MatchesListScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
@@ -2840,7 +2838,7 @@ fun MatchDetailScreen(
                 }
             }
             5 -> {
-                StandingsTab(colors)
+                StandingsTab(leagueId = leagueId, colors = colors)
             }
             6 -> {
                 TimelineTab(match, colors)
@@ -2919,25 +2917,114 @@ fun TimelineTab(match: StatPalMatch, colors: AppColors) {
 }
 
 @Composable
-fun StandingsTab(colors: AppColors) {
+fun StandingsTab(leagueId: String?, colors: AppColors) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var standingsTeams by remember { mutableStateOf<List<StandingTeamRow>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(leagueId) {
+        val apiKey = getApiKey(context)
+        if (apiKey.isBlank() || leagueId.isNullOrBlank()) {
+            isLoading = false
+            errorMessage = "A tabella nem érhető el ehhez a mérkőzéshez."
+            return@LaunchedEffect
+        }
+
+        val cacheKey = "standings_$leagueId"
+        val cached: List<StandingTeamRow>? = ApiCacheManager.get(cacheKey)
+        if (cached != null) {
+            standingsTeams = cached
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        coroutineScope.launch {
+            try {
+                val response = StatPalClient.service.getLeagueStandings(leagueId, apiKey)
+                val teams = response.standings?.tournament?.team.orEmpty()
+                standingsTeams = teams
+                if (teams.isNotEmpty()) {
+                    ApiCacheManager.put(cacheKey, teams)
+                } else {
+                    errorMessage = "Nincs elérhető tabella adat ehhez a ligához."
+                }
+            } catch (e: Exception) {
+                errorMessage = "Hiba történt a tabella lekérése közben."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, colors.border, RoundedCornerShape(12.dp))
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("📊 BAJNOKI TABELLA", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(12.dp))
+        Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "A bajnoki tabellák és helyezések adatai a következő rendszerfrissítéssel érkeznek meg ebbe a nézetbe.",
-                color = colors.textMuted,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
+                text = "📊 BAJNOKI TABELLA",
+                color = colors.accentPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
             )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = colors.accentPrimary)
+                }
+            } else if (!errorMessage.isNullOrBlank() || standingsTeams.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = errorMessage ?: "Nincs elérhető tabella.",
+                        color = colors.textMuted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("#", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                    Text("Csapat", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("M", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
+                    Text("GK", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
+                    Text("P", color = colors.accentPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(32.dp), textAlign = TextAlign.End)
+                }
+                Divider(color = colors.border, modifier = Modifier.padding(vertical = 4.dp))
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.height(350.dp)
+                ) {
+                    items(standingsTeams) { row ->
+                        val pos = row.position ?: "-"
+                        val name = row.name ?: "-"
+                        val played = row.overall?.gamesPlayed ?: "0"
+                        val gd = row.total?.goalDifference ?: "0"
+                        val pts = row.total?.points ?: "0"
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(pos, color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                            Text(name, color = colors.textPrimary, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                            Text(played, color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
+                            Text(gd, color = colors.textMuted, fontSize = 12.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
+                            Text(pts, color = colors.accentPrimary, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(32.dp), textAlign = TextAlign.End)
+                        }
+                    }
+                }
+            }
         }
     }
 }
