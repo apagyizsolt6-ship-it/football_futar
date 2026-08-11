@@ -60,6 +60,15 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+
+// Google ML Kit OCR importok
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -444,7 +453,26 @@ fun checkFuzzyMatch(s1: String, s2: String): Boolean {
 }
 
 // ==========================================
-// GEMINI VISION & STABIL KÉPBEOLVASÓ ENGINE
+// GOOGLE ML KIT OCR SEGÉDFÜGGVÉNY
+// ==========================================
+suspend fun extractTextFromBitmap(bitmap: Bitmap): String = suspendCancellableCoroutine { continuation ->
+    try {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                continuation.resume(visionText.text)
+            }
+            .addOnFailureListener { e ->
+                continuation.resumeWithException(e)
+            }
+    } catch (e: Exception) {
+        continuation.resumeWithException(e)
+    }
+}
+
+// ==========================================
+// GEMINI VISION & OCR HIBRID SZELETVÉNYOLVASÓ
 // ==========================================
 data class GeminiMarketOdds(
     val home: String,
@@ -464,7 +492,14 @@ data class GeminiMarketOdds(
 suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<BetSlipItem>? {
     return withContext(Dispatchers.IO) {
         try {
-            // Fotó méretének optimalizálása (max 1024px szélesség/magasság a biztos és gyors API küldéshez)
+            // 1. Helyi Google ML Kit OCR kinyerés a stabil szöveges alapért
+            val ocrText = try {
+                extractTextFromBitmap(bitmap)
+            } catch (e: Exception) {
+                ""
+            }
+
+            // 2. Kép optimalizálás (max 1024px)
             val maxDim = 1024
             val width = bitmap.width
             val height = bitmap.height
@@ -490,13 +525,14 @@ suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<
             conn.connectTimeout = 15000
             conn.readTimeout = 15000
 
-            val promptText = "Olvasd be ezt a Tippmix vagy sportfogadási szelvényt! Keresd meg a fogadási eseményeket! " +
+            val promptText = "Ez egy sportfogadási / Tippmix szelvény. A helyi OCR motor által kinyert nyers szöveg a következő:\n" +
+                    "'''\n$ocrText\n'''\n\n" +
+                    "Kérlek elemezd ezt a szöveget és a csatolt képet, keresd meg a fogadási eseményeket és a tippeket! " +
                     "Válaszolj KIZÁRÓLAG egy valid JSON tömbbel, ami az alábbi mezőket tartalmazza minden meccsnél:\n" +
                     "- 'matchTitle': a két csapat neve (Hazai vs Vendég formátumban)\n" +
                     "- 'choiceName': a kiválasztott tipp (pl. '1', 'X', '2', 'Over 2.5', 'Mindkét csapat gól: Igen')\n" +
                     "- 'odds': a tipphez tartozó odds tizedestörtként (szám, pl. 1.85)"
 
-            // Strukturált JsonObject építése hiba nélkül
             val jsonPayload = JsonObject().apply {
                 val contentsArr = JsonArray().apply {
                     val contentObj = JsonObject().apply {
@@ -1043,7 +1079,7 @@ fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
             else -> {
                 Pair(
                     "⚔️ Kiélezett döntetlen állás",
-                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem most kulcsfontosságú."
+                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem now kulcsfontosságú."
                 )
             }
         }
@@ -1271,7 +1307,7 @@ fun MatchesListScreen(
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
-    // DEDIKÁLT BEOLVASÁSI LOGIKA (BITMAP PROCESSOR)
+    // DEDIKÁLT BEOLVASÁSI LOGIKA (ML KIT OCR + GEMINI HIBRID ENGINE)
     val processBitmapScan: (Bitmap) -> Unit = { bitmap ->
         val geminiKey = getGeminiApiKey(context)
         if (geminiKey.isBlank()) {
@@ -1283,7 +1319,7 @@ fun MatchesListScreen(
                 isScanningTicket = false
                 if (!scanned.isNullOrEmpty()) {
                     onScanTicketItems(scanned)
-                    Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről (OCR + AI)!", Toast.LENGTH_LONG).show()
                 } else {
                     Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt. Próbáld újra egy tisztább fotóval!", Toast.LENGTH_LONG).show()
                 }
@@ -1318,7 +1354,7 @@ fun MatchesListScreen(
     if (showScanSourceDialog) {
         AlertDialog(
             onDismissRequest = { showScanSourceDialog = false },
-            title = { Text("📷 Szelvény Beolvasása", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text("📷 Szelvény Beolvasása (OCR)", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
             text = { Text("Hogyan szeretnéd beolvasni a Tippmix / sportfogadási szelvényt?", color = colors.textMuted) },
             confirmButton = {
                 TextButton(onClick = {
@@ -2650,7 +2686,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ESEMÉNYEK")
+    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
