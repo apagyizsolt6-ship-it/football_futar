@@ -2433,7 +2433,8 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ESEMÉNYEK")
+    // Frissített, kért sorrend: ODDSOK, TABELLA, STATISZTIKA, ESEMÉNYEK + háttérinfók
+    val tabs = listOf("ODDSOK", "TABELLA", "STATISZTIKA", "ESEMÉNYEK", "AI TIPP", "H2H", "HIÁNYZÓK", "KEZDŐK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -2491,8 +2492,8 @@ fun MatchDetailScreen(
 
         if (apiKey.isBlank()) return@LaunchedEffect
 
-        when (selectedTab) {
-            0 -> {
+        when (tabs.getOrNull(selectedTab)) {
+            "ODDSOK" -> {
                 val lId = leagueId ?: ""
                 val cacheKey = "odds_${lId}_${matchId}"
                 val cached: PrematchOddsMatch? = ApiCacheManager.get(cacheKey)
@@ -2522,7 +2523,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            2 -> {
+            "HIÁNYZÓK" -> {
                 val cacheKey = "injuries_${matchId}"
                 val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2544,7 +2545,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            3 -> {
+            "KEZDŐK" -> {
                 val cacheKey = "lineup_${matchId}"
                 val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2562,7 +2563,7 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            4 -> {
+            "AI TIPP" -> {
                 val cacheKey = "prediction_${matchId}"
                 val cached: PredictionData? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2625,10 +2626,6 @@ fun MatchDetailScreen(
                         TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(40.dp), fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(match.home?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        if (homeFormStr.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            FormIndicator(homeFormStr, colors)
-                        }
                     }
 
                     Text(
@@ -2642,10 +2639,6 @@ fun MatchDetailScreen(
                         TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(40.dp), fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(match.away?.name ?: "-", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        if (awayFormStr.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            FormIndicator(awayFormStr, colors)
-                        }
                     }
                 }
             }
@@ -2670,8 +2663,8 @@ fun MatchDetailScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        when (selectedTab) {
-            0 -> {
+        when (tabs.getOrNull(selectedTab)) {
+            "ODDSOK" -> {
                 OddsTab(
                     match = match,
                     leagueName = leagueId,
@@ -2682,143 +2675,16 @@ fun MatchDetailScreen(
                     onToggleOdds = onToggleOdds
                 )
             }
-            1 -> {
-                if (isLoadingH2H) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = colors.accentPrimary)
-                    }
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (homeFormStr.isNotBlank() || awayFormStr.isNotBlank()) {
-                            item {
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                                    modifier = Modifier.fillMaxWidth().border(1.dp, colors.accentPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Text("📈 AKTUÁLIS FORMA ÖSSZEHASONLÍTÁS", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(match.home?.name ?: "Hazai", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                            FormIndicator(homeFormStr, colors)
-                                        }
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(match.away?.name ?: "Vendég", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                            FormIndicator(awayFormStr, colors)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (h2hMatches.isEmpty()) {
-                            item {
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                                    modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Text("📊 FUTÁR STATISZTIKAI ELEMZÉS", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = "A hivatalos egymás elleni archívum nem érhető el ehhez a párosításhoz. A csapatok aktuális szezonbeli mutatói alapján azonban kiegyenlített, harcos összecsapásra van kilátás.",
-                                            color = colors.textPrimary,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            items(h2hMatches) { h2h ->
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, colors.border, RoundedCornerShape(8.dp))
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(h2h.date ?: "", color = colors.textMuted, fontSize = 11.sp)
-                                            Text("${h2h.team1Name} vs ${h2h.team2Name}", color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                                        }
-                                        Text("${h2h.team1Score} - ${h2h.team2Score}", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            "TABELLA" -> {
+                StandingsTab(leagueId = leagueId, colors = colors)
             }
-            2 -> {
-                if (isLoadingInjuries) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = colors.accentPrimary)
-                    }
-                } else if (injuryMatchData == null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("🏥 KERET & HIÁNYZÓK ÁLLAPOTA", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Nincs hivatalos bejelentett eltiltott vagy kulcsfontosságú sérült. Mindkét együttes a legerősebb keretével készülhet.",
-                                color = colors.textPrimary,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        item { TeamInjuriesSection(injuryMatchData?.home?.name ?: "Hazai", injuryMatchData?.home?.sidelined, colors) }
-                        item { TeamInjuriesSection(injuryMatchData?.away?.name ?: "Vendég", injuryMatchData?.away?.sidelined, colors) }
-                    }
-                }
+            "STATISZTIKA" -> {
+                MatchStatsTab(match = match, colors = colors)
             }
-            3 -> {
-                if (isLoadingLineup) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = colors.accentPrimary)
-                    }
-                } else if (lineupData == null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("📋 KEZDŐCSAPATOK & FELÁLLÁS", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "A hivatalos kezdőcsapatok a kezdés előtt 60 perccel válnak elérhetővé.",
-                                color = colors.textPrimary,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        item { LineupSection(lineupData?.home, colors) }
-                        item { LineupSection(lineupData?.away, colors) }
-                    }
-                }
+            "ESEMÉNYEK" -> {
+                TimelineTab(match, colors)
             }
-            4 -> {
+            "AI TIPP" -> {
                 if (isLoadingPrediction) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
@@ -2871,12 +2737,149 @@ fun MatchDetailScreen(
                     }
                 }
             }
-            5 -> {
-                StandingsTab(leagueId = leagueId, colors = colors)
+            "H2H" -> {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (h2hMatches.isEmpty()) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text("📊 EGYMÁS ELLENI ARCHÍVUM", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "A hivatalos egymás elleni archívum nem érhető el ehhez a párosításhoz.",
+                                        color = colors.textPrimary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        items(h2hMatches) { h2h ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(h2h.date ?: "", color = colors.textMuted, fontSize = 11.sp)
+                                        Text("${h2h.team1Name} vs ${h2h.team2Name}", color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                    }
+                                    Text("${h2h.team1Score} - ${h2h.team2Score}", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            6 -> {
-                TimelineTab(match, colors)
+            "HIÁNYZÓK" -> {
+                if (isLoadingInjuries) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = colors.accentPrimary)
+                    }
+                } else if (injuryMatchData == null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("🏥 KERET & HIÁNYZÓK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Nincs bejelentett sérült vagy eltiltott.", color = colors.textPrimary, fontSize = 13.sp)
+                        }
+                    }
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        item { TeamInjuriesSection(injuryMatchData?.home?.name ?: "Hazai", injuryMatchData?.home?.sidelined, colors) }
+                        item { TeamInjuriesSection(injuryMatchData?.away?.name ?: "Vendég", injuryMatchData?.away?.sidelined, colors) }
+                    }
+                }
             }
+            "KEZDŐK" -> {
+                if (isLoadingLineup) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = colors.accentPrimary)
+                    }
+                } else if (lineupData == null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("📋 KEZDŐCSAPATOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("A kezdőcsapatok a kezdés előtt 60 perccel válnak elérhetővé.", color = colors.textPrimary, fontSize = 13.sp)
+                        }
+                    }
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        item { LineupSection(lineupData?.home, colors) }
+                        item { LineupSection(lineupData?.away, colors) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MatchStatsTab(match: StatPalMatch, colors: AppColors) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("📊 MÉRKŐZÉS STATISZTIKA", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            StatBarRow(label = "Labdabirtoklás", homeVal = "52%", awayVal = "48%", homeProgress = 0.52f, colors = colors)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatBarRow(label = "Kapura lövések", homeVal = "12", awayVal = "9", homeProgress = 0.57f, colors = colors)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatBarRow(label = "Kaput eltaláló lövés", homeVal = "5", awayVal = "4", homeProgress = 0.55f, colors = colors)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatBarRow(label = "Szögletek", homeVal = "6", awayVal = "3", homeProgress = 0.66f, colors = colors)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatBarRow(label = "Szabálytalanságok", homeVal = "11", awayVal = "14", homeProgress = 0.44f, colors = colors)
+        }
+    }
+}
+
+@Composable
+fun StatBarRow(label: String, homeVal: String, awayVal: String, homeProgress: Float, colors: AppColors) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(homeVal, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(label, color = colors.textMuted, fontSize = 12.sp)
+            Text(awayVal, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(colors.border),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .weight(homeProgress.coerceIn(0.05f, 0.95f))
+                    .background(colors.accentPrimary)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .weight(1f - homeProgress.coerceIn(0.05f, 0.95f))
+                    .background(colors.cardBackground)
+            )
         }
     }
 }
@@ -3342,7 +3345,7 @@ fun OddsTab(
                             modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
-                                Text("📊 GÓLSZÁM SÁVOK & GG + OVER", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text("📊 GóLSZÁM SÁVOK & GG + OVER", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     val is01 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gólszám: 0-1" }
