@@ -243,7 +243,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 fun saveTheOddsApiKey(context: Context, key: String) {
@@ -254,7 +254,7 @@ fun saveTheOddsApiKey(context: Context, key: String) {
 
 fun getTheOddsApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
+    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
 }
 
 fun getTheOddsApiSportKey(leagueName: String?): String {
