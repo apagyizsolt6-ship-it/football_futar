@@ -170,7 +170,22 @@ fun toggleFavoriteLeague(context: Context, leagueKey: String) {
     }
     prefs.edit().putStringSet("favorite_leagues", current).apply()
 }
+// 6. Kedvenc Csapatok kezelése
+fun getFavoriteTeams(context: Context): Set<String> {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getStringSet("favorite_teams", emptySet()) ?: emptySet()
+}
 
+fun toggleFavoriteTeam(context: Context, teamName: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val current = prefs.getStringSet("favorite_teams", emptySet())?.toMutableSet() ?: mutableSetOf()
+    if (current.contains(teamName)) {
+        current.remove(teamName)
+    } else {
+        current.add(teamName)
+    }
+    prefs.edit().putStringSet("favorite_teams", current).apply()
+}
 fun getNotificationPref(context: Context, key: String, defaultVal: Boolean): Boolean {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getBoolean(key, defaultVal)
