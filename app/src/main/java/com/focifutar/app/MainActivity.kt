@@ -705,7 +705,7 @@ fun isTopLeague(leagueName: String?): Boolean {
     val topKeywords = listOf(
         "NB I", "PREMIER LEAGUE", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1",
         "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CONFERENCE LEAGUE", "EREDIVISIE",
-        "PRIMEIRA LIGA", "SUPER LIG", "EKSTRAKLASA", "COPPA ITALIA"
+        "PRIMEIRA LIGA", "SUPER LIG", "EKSTRAKLASA", "COPPA ITALIA", "ALLSVENSKAN"
     )
     return topKeywords.any { l.contains(it) }
 }
@@ -2433,7 +2433,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    // Frissített, kért sorrend: ODDSOK, TABELLA, STATISZTIKA, ESEMÉNYEK + háttérinfók
+    // Sorrend: ODDSOK, TABELLA, STATISZTIKA, ESEMÉNYEK + háttérinfók
     val tabs = listOf("ODDSOK", "TABELLA", "STATISZTIKA", "ESEMÉNYEK", "AI TIPP", "H2H", "HIÁNYZÓK", "KEZDŐK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
@@ -2830,6 +2830,10 @@ fun MatchDetailScreen(
 
 @Composable
 fun MatchStatsTab(match: StatPalMatch, colors: AppColors) {
+    // Valós statisztika ellenőrzés (ha az API adna hozzá adatot)
+    // Ha nincsenek adatok (pl. alacsonyabb osztályú meccseknél), kulturált üzenetet írunk ki a hamis adatok helyett.
+    val hasRealStats = false 
+
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
         modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
@@ -2838,15 +2842,31 @@ fun MatchStatsTab(match: StatPalMatch, colors: AppColors) {
             Text("📊 MÉRKŐZÉS STATISZTIKA", color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
-            StatBarRow(label = "Labdabirtoklás", homeVal = "52%", awayVal = "48%", homeProgress = 0.52f, colors = colors)
-            Spacer(modifier = Modifier.height(12.dp))
-            StatBarRow(label = "Kapura lövések", homeVal = "12", awayVal = "9", homeProgress = 0.57f, colors = colors)
-            Spacer(modifier = Modifier.height(12.dp))
-            StatBarRow(label = "Kaput eltaláló lövés", homeVal = "5", awayVal = "4", homeProgress = 0.55f, colors = colors)
-            Spacer(modifier = Modifier.height(12.dp))
-            StatBarRow(label = "Szögletek", homeVal = "6", awayVal = "3", homeProgress = 0.66f, colors = colors)
-            Spacer(modifier = Modifier.height(12.dp))
-            StatBarRow(label = "Szabálytalanságok", homeVal = "11", awayVal = "14", homeProgress = 0.44f, colors = colors)
+            if (hasRealStats) {
+                StatBarRow(label = "Labdabirtoklás", homeVal = "52%", awayVal = "48%", homeProgress = 0.52f, colors = colors)
+                Spacer(modifier = Modifier.height(12.dp))
+                StatBarRow(label = "Kapura lövések", homeVal = "12", awayVal = "9", homeProgress = 0.57f, colors = colors)
+                Spacer(modifier = Modifier.height(12.dp))
+                StatBarRow(label = "Kaput eltaláló lövés", homeVal = "5", awayVal = "4", homeProgress = 0.55f, colors = colors)
+                Spacer(modifier = Modifier.height(12.dp))
+                StatBarRow(label = "Szögletek", homeVal = "6", awayVal = "3", homeProgress = 0.66f, colors = colors)
+                Spacer(modifier = Modifier.height(12.dp))
+                StatBarRow(label = "Szabálytalanságok", homeVal = "11", awayVal = "14", homeProgress = 0.44f, colors = colors)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Ehhez a mérkőzéshez (vagy alsóbb osztályú bajnoksághoz) részletes statisztikai adatok nem érhetők el.",
+                        color = colors.textMuted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }
@@ -3345,7 +3365,7 @@ fun OddsTab(
                             modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
-                                Text("📊 GóLSZÁM SÁVOK & GG + OVER", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text("📊 GÓLSZÁM SÁVOK & GG + OVER", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     val is01 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gólszám: 0-1" }
