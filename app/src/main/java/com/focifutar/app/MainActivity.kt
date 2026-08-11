@@ -262,7 +262,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun saveTheOddsApiKey(context: Context, key: String) {
@@ -273,10 +273,9 @@ fun saveTheOddsApiKey(context: Context, key: String) {
 
 fun getTheOddsApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
-// Highlightly API kulcskezelés SharedPreferences-en keresztül
 fun saveHighlightlyApiKey(context: Context, key: String) {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     val cleanKey = key.trim().replace("\"", "").replace("'", "")
@@ -285,7 +284,7 @@ fun saveHighlightlyApiKey(context: Context, key: String) {
 
 fun getHighlightlyApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("highlightly_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("highlightly_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun getTheOddsApiSportKey(leagueName: String?): String {
@@ -1109,6 +1108,27 @@ fun MatchesListScreen(
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
+    
+    // Háttérben lekért videós meccs csapatnevek a főlistás 🎥 ikonhoz
+    var videoTeamNames by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(Unit) {
+        val highlightKey = getHighlightlyApiKey(context)
+        if (highlightKey.isNotBlank()) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val service = HighlightlyService.create()
+                    val response = service.getHighlights(highlightKey)
+                    val teams = mutableSetOf<String>()
+                    response.data.forEach { h ->
+                        teams.add(h.match.homeTeam.name.lowercase().trim())
+                        teams.add(h.match.awayTeam.name.lowercase().trim())
+                    }
+                    videoTeamNames = teams
+                } catch (_: Exception) {}
+            }
+        }
+    }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
@@ -1622,16 +1642,22 @@ fun MatchesListScreen(
                         val leagueId = pairItem.second
                         val matchId = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                         val flashColor = flashingMatchesState[matchId]
+                        
+                        val homeNameLower = match.home?.name?.lowercase()?.trim() ?: ""
+                        val awayNameLower = match.away?.name?.lowercase()?.trim() ?: ""
+                        val hasVideo = videoTeamNames.contains(homeNameLower) || videoTeamNames.contains(awayNameLower)
+
                         MatchRow(
-                            match,
-                            true,
-                            flashColor,
-                            colors,
-                            {
+                            match = match,
+                            isFavorite = true,
+                            hasVideo = hasVideo,
+                            flashColor = flashColor,
+                            colors = colors,
+                            onToggleFavorite = {
                                 toggleFavoriteMatch(context, matchId)
                                 favoriteIds = getFavoriteMatchIds(context)
                             },
-                            {
+                            onClick = {
                                 selectedMatchGlobal = match
                                 selectedLeagueIdGlobal = leagueId
                                 navController.navigate("match_detail")
@@ -1673,16 +1699,21 @@ fun MatchesListScreen(
                             val isFav = favoriteIds.contains(matchId)
                             val flashColor = flashingMatchesState[matchId]
 
+                            val homeNameLower = matchItem.home?.name?.lowercase()?.trim() ?: ""
+                            val awayNameLower = matchItem.away?.name?.lowercase()?.trim() ?: ""
+                            val hasVideo = videoTeamNames.contains(homeNameLower) || videoTeamNames.contains(awayNameLower)
+
                             MatchRow(
-                                matchItem,
-                                isFav,
-                                flashColor,
-                                colors,
-                                {
+                                match = matchItem,
+                                isFavorite = isFav,
+                                hasVideo = hasVideo,
+                                flashColor = flashColor,
+                                colors = colors,
+                                onToggleFavorite = {
                                     toggleFavoriteMatch(context, matchId)
                                     favoriteIds = getFavoriteMatchIds(context)
                                 },
-                                {
+                                onClick = {
                                     selectedMatchGlobal = matchItem
                                     selectedLeagueIdGlobal = league.id ?: league.name
                                     navController.navigate("match_detail")
@@ -1722,16 +1753,21 @@ fun MatchesListScreen(
                                 val isFav = favoriteIds.contains(matchId)
                                 val flashColor = flashingMatchesState[matchId]
 
+                                val homeNameLower = matchItem.home?.name?.lowercase()?.trim() ?: ""
+                                val awayNameLower = matchItem.away?.name?.lowercase()?.trim() ?: ""
+                                val hasVideo = videoTeamNames.contains(homeNameLower) || videoTeamNames.contains(awayNameLower)
+
                                 MatchRow(
-                                    matchItem,
-                                    isFav,
-                                    flashColor,
-                                    colors,
-                                    {
+                                    match = matchItem,
+                                    isFavorite = isFav,
+                                    hasVideo = hasVideo,
+                                    flashColor = flashColor,
+                                    colors = colors,
+                                    onToggleFavorite = {
                                         toggleFavoriteMatch(context, matchId)
                                         favoriteIds = getFavoriteMatchIds(context)
                                     },
-                                    {
+                                    onClick = {
                                         selectedMatchGlobal = matchItem
                                         selectedLeagueIdGlobal = league.id ?: league.name
                                         navController.navigate("match_detail")
@@ -1939,9 +1975,10 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(savedBets) { bet ->
+                    // NYERT -> zöld háttér és zöld keret | VESZÍTETT -> piros háttér és piros keret
                     val cardBg = when (bet.status) {
-                        "NYERT" -> Color(0xFF22C55E).copy(alpha = 0.2f)
-                        "VESZÍTETT" -> Color(0xFFEF4444).copy(alpha = 0.2f)
+                        "NYERT" -> Color(0xFF22C55E).copy(alpha = 0.25f)
+                        "VESZÍTETT" -> Color(0xFFEF4444).copy(alpha = 0.25f)
                         else -> colors.cardBackground
                     }
                     val borderColor = when (bet.status) {
@@ -1954,7 +1991,7 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                         colors = CardDefaults.cardColors(containerColor = cardBg),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                            .border(2.dp, borderColor, RoundedCornerShape(10.dp))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -1988,12 +2025,12 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                                     Text(
                                         text = bet.status,
                                         color = when (bet.status) {
-                                            "NYERT" -> Color(0xFF22C55E)
-                                            "VESZÍTETT" -> Color(0xFFEF4444)
+                                            "NYERT" -> Color(0xFF15803D)
+                                            "VESZÍTETT" -> Color(0xFFB91C1C)
                                             else -> colors.accentYellow
                                         },
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.sp
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
@@ -2013,7 +2050,7 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                                 Text("• ${item.matchTitle}: ${item.choiceName} (${item.odds})", color = colors.textPrimary, fontSize = 12.sp)
                             }
                             Spacer(modifier = Modifier.height(6.dp))
-                            Divider(color = colors.border)
+                            Divider(color = borderColor.copy(alpha = 0.5f))
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -2259,6 +2296,7 @@ fun LeagueHeader(
 fun MatchRow(
     match: StatPalMatch,
     isFavorite: Boolean,
+    hasVideo: Boolean,
     flashColor: Color?,
     colors: AppColors,
     onToggleFavorite: () -> Unit,
@@ -2334,15 +2372,24 @@ fun MatchRow(
                 color = if (isFavorite) colors.accentYellow else colors.textMuted,
                 modifier = Modifier
                     .clickable { onToggleFavorite() }
-                    .padding(end = 8.dp)
+                    .padding(end = 6.dp)
             )
+
+            // 🎥 Videó ikon a főlistán, ha elérhető összefoglaló
+            if (hasVideo) {
+                Text(
+                    text = "🎥",
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+            }
 
             Text(
                 text = formattedTime,
                 color = if (live) colors.accentRed else colors.textMuted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.width(50.dp)
+                modifier = Modifier.width(48.dp)
             )
 
             Column(modifier = Modifier.weight(1f)) {
