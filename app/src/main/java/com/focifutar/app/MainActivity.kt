@@ -308,7 +308,7 @@ data class OddsApiResult(
     val bookmakerName: String
 )
 
-suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: String, away: String): OddsApiResult? {
+suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: String?, away: String?): OddsApiResult? {
     return withContext(Dispatchers.IO) {
         try {
             val sportKey = getTheOddsApiSportKey(leagueName)
@@ -330,8 +330,8 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
 
             if (!rawJson.isNullOrBlank()) {
                 val jsonArray = JsonParser().parse(rawJson).asJsonArray
-                val homeClean = home.lowercase().trim()
-                val awayClean = away.lowercase().trim()
+                val homeClean = home?.lowercase()?.trim() ?: ""
+                val awayClean = away?.lowercase()?.trim() ?: ""
 
                 for (i in 0 until jsonArray.size()) {
                     val event = jsonArray.get(i).asJsonObject
@@ -446,7 +446,6 @@ suspend fun extractTextFromBitmap(bitmap: Bitmap): String = suspendCancellableCo
     }
 }
 
-// 🟢 JAVÍTOTT, STABIL GEMINI HÍVÁS (v1-es API VÉGPONT ÉS GEMINI-1.5-FLASH)
 suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<BetSlipItem>? {
     return withContext(Dispatchers.IO) {
         try {
@@ -473,7 +472,6 @@ suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<
             val imageBytes = outputStream.toByteArray()
             val base64Image = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
 
-            // Használjuk a stabilabb v1 végpontot és a 1.5-flash modellt
             val url = URL("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$apiKey")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -942,7 +940,8 @@ fun translateLeagueName(leagueName: String?): String {
         "PERU" to "🇵🇪 PERU", "POLAND" to "🇵🇱 LENGYELORSZÁG", "PORTUGAL" to "🇵🇹 PORTUGÁLIA",
         "QATAR" to "🇶🇦 KATAR", "ROMANIA" to "🇷🇴 ROMÁNIA", "RUSSIA" to "🇷🇺 OROSZORSZÁG",
         "SAUDI ARABIA" to "🇸🇦 SZAÚD-ARÁBIA", "SCOTLAND" to "🏴󠁧󠁢󠁥󠁮󠁧󠁿 SKÓCIA", "SERBIA" to "🇷🇸 SZERBIA",
-        "SLOVAKIA" to "🇸🇰 SZLOVÁKIA", "SLOVENIA" to "🇸🇮 SZLOVÉNIA", "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA",
+        "SLOVAKIA" to "🇸🇰 SZLOVÁKIA",
+        "SLOVENIA" to "🇸🇮 SZLOVÉNIA", "SOUTH AFRICA" to "🇿🇦 DÉL-AFRIKA",
         "SOUTH AMERICA" to "🌎 DÉL-AMERIKA", "SOUTH KOREA" to "🇰🇷 DÉL-KOREA", "SPAIN" to "🇪🇸 SPANYOLORSZÁG",
         "SRI LANKA" to "🇱🇰 SRI LANKA", "SWEDEN" to "🇸🇪 SVÉDORSZÁG", "SWITZERLAND" to "🇨🇭 SVÁJC",
         "TURKEY" to "🇹🇷 TÖRÖKORSZÁG", "UKRAINE" to "🇺🇦 UKRAJNA", "UNITED ARAB EMIRATES" to "🇦🇪 EGYESÜLT ARAB EMÍRSÉGEK",
@@ -2657,7 +2656,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ESEMÉNYEK")
+    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
