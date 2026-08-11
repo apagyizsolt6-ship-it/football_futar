@@ -1302,6 +1302,10 @@ fun MatchesListScreen(
                             if (!isPastDay) {
                                 if (!isUpcomingMatch(match)) keep = false
                             }
+                        }                        if (isFavoriteTeamFilter) {
+                            val hName = match.home?.name ?: ""
+                            val aName = match.away?.name ?: ""
+                            if (!favoriteTeams.contains(hName) && !favoriteTeams.contains(aName)) keep = false
                         }
                         if (selectedTimeFilterHours != null && !isMatchWithinHours(match, selectedTimeFilterHours!!)) keep = false
                         if (searchQuery.isNotBlank()) {
