@@ -47,4 +47,7 @@ dependencies {
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
     implementation 'io.coil-kt:coil-compose:2.5.0'
     implementation 'androidx.work:work-runtime-ktx:2.8.1'
+
+    // Google ML Kit OCR (Helyi optikai karakterfelismerés a szelvényekhez)
+    implementation 'com.google.mlkit:text-recognition:16.0.0'
 }
