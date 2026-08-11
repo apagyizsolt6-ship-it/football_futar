@@ -262,7 +262,9 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.let {
+        it.replace("\"", "").replace("'", "")
+    } ?: ""
 }
 
 fun saveTheOddsApiKey(context: Context, key: String) {
@@ -273,7 +275,9 @@ fun saveTheOddsApiKey(context: Context, key: String) {
 
 fun getTheOddsApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("the_odds_api_key", "")?.trim()?.let {
+        it.replace("\"", "").replace("'", "")
+    } ?: ""
 }
 
 fun saveHighlightlyApiKey(context: Context, key: String) {
@@ -284,7 +288,9 @@ fun saveHighlightlyApiKey(context: Context, key: String) {
 
 fun getHighlightlyApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("highlightly_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("highlightly_api_key", "")?.trim()?.let {
+        it.replace("\"", "").replace("'", "")
+    } ?: ""
 }
 
 fun getTheOddsApiSportKey(leagueName: String?): String {
@@ -1105,11 +1111,13 @@ fun MatchesListScreen(
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var previousYellowMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var previousRedMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
     
-    // Háttérben lekért videós meccs csapatnevek a főlistás 🎥 ikonhoz
     var videoTeamNames by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(Unit) {
@@ -1160,19 +1168,28 @@ fun MatchesListScreen(
                 val validLeagues = rawLeagues.filter { isAllowedLeague(it.name) }
 
                 val newScoresMap = mutableMapOf<String, String>()
+                val newYellowMap = mutableMapOf<String, Int>()
+                val newRedMap = mutableMapOf<String, Int>()
 
                 validLeagues.flatMap { it.match }.forEach { m ->
                     val id = m.mainId ?: "${m.home?.name}-${m.away?.name}"
                     val scoreStr = "${m.home?.goals ?: "0"}-${m.away?.goals ?: "0"}"
                     newScoresMap[id] = scoreStr
 
+                    val events = m.events?.event.orEmpty()
+                    val yellowCount = events.count { e -> e.type?.lowercase()?.contains("yellow") == true }
+                    val redCount = events.count { e -> e.type?.lowercase()?.contains("red") == true }
+                    newYellowMap[id] = yellowCount
+                    newRedMap[id] = redCount
+
                     val isFav = favoriteIds.contains(id)
                     val isLiveNow = isLiveMatch(m)
 
-                    if (isFav) {
-                        if (previousScoresMap.containsKey(id) && isLiveNow) {
+                    if (isFav && isLiveNow) {
+                        // Check score / goal change
+                        if (previousScoresMap.containsKey(id)) {
                             val oldScore = previousScoresMap[id] ?: "0-0"
-                            if (oldScore != scoreStr && oldScore != "null-null" && oldScore != "?-?" && oldScore != "0-0") {
+                            if (oldScore != scoreStr && oldScore != "0-0") {
                                 val oldParts = oldScore.split("-")
                                 val newParts = scoreStr.split("-")
                                 val oldTotal = (oldParts.getOrNull(0)?.toIntOrNull() ?: 0) + (oldParts.getOrNull(1)?.toIntOrNull() ?: 0)
@@ -1181,15 +1198,41 @@ fun MatchesListScreen(
                                 if (newTotal > oldTotal) {
                                     coroutineScope.launch {
                                         flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
-                                        delay(15000L)
+                                        delay(20000L)
                                         flashingMatchesState = flashingMatchesState - id
                                     }
+                                }
+                            }
+                        }
+
+                        // Check Red Card (Flashing Red for 20s)
+                        if (previousRedMap.containsKey(id)) {
+                            val oldRed = previousRedMap[id] ?: 0
+                            if (redCount > oldRed) {
+                                coroutineScope.launch {
+                                    flashingMatchesState = flashingMatchesState + (id to Color(0xFFEF4444))
+                                    delay(20000L)
+                                    flashingMatchesState = flashingMatchesState - id
+                                }
+                            }
+                        }
+
+                        // Check Yellow Card (Flashing Yellow for 20s) if no new red card
+                        if (previousYellowMap.containsKey(id)) {
+                            val oldYellow = previousYellowMap[id] ?: 0
+                            if (yellowCount > oldYellow && redCount == (previousRedMap[id] ?: 0)) {
+                                coroutineScope.launch {
+                                    flashingMatchesState = flashingMatchesState + (id to Color(0xFFEAB308))
+                                    delay(20000L)
+                                    flashingMatchesState = flashingMatchesState - id
                                 }
                             }
                         }
                     }
                 }
                 previousScoresMap = newScoresMap
+                previousYellowMap = newYellowMap
+                previousRedMap = newRedMap
 
                 if (validLeagues.isNotEmpty()) {
                     leagues = validLeagues
@@ -1329,11 +1372,12 @@ fun MatchesListScreen(
         if (fallbackMatch != null) Pair(fallbackMatch, fallbackLeague.id ?: fallbackLeague.name) else null
     }
 
+    // Kedvenc meccsek listája: élő és meccs előtti meccseket is tartalmazhat
     val favoriteMatchesList = remember(leagues, favoriteIds) {
         leagues.flatMap { league ->
             league.match.filter { match ->
                 val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
-                favoriteIds.contains(id) && isUpcomingMatch(match)
+                favoriteIds.contains(id)
             }.map { Pair(it, league.id ?: league.name) }
         }
     }
@@ -1626,7 +1670,7 @@ fun MatchesListScreen(
                     }
                 }
 
-                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null && !isPastDay) {
+                if (favoriteMatchesList.isNotEmpty() && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null) {
                     item {
                         LeagueHeader(
                             title = "⭐ KEDVENC MECCSEK",
@@ -1975,7 +2019,6 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(savedBets) { bet ->
-                    // NYERT -> zöld háttér és zöld keret | VESZÍTETT -> piros háttér és piros keret
                     val cardBg = when (bet.status) {
                         "NYERT" -> Color(0xFF22C55E).copy(alpha = 0.25f)
                         "VESZÍTETT" -> Color(0xFFEF4444).copy(alpha = 0.25f)
@@ -2375,7 +2418,6 @@ fun MatchRow(
                     .padding(end = 6.dp)
             )
 
-            // 🎥 Videó ikon a főlistán, ha elérhető összefoglaló
             if (hasVideo) {
                 Text(
                     text = "🎥",
