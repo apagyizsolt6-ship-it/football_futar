@@ -61,7 +61,6 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 
-// Google ML Kit OCR importok
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -81,9 +80,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-// ==========================================
-// TÉMA SZÍNEK (SÖTÉT ÉS VILÁGOS MÓD)
-// ==========================================
 data class AppColors(
     val background: Color,
     val cardBackground: Color,
@@ -167,9 +163,6 @@ fun toggleFavoriteLeague(context: Context, leagueKey: String) {
     prefs.edit().putStringSet("favorite_leagues", current).apply()
 }
 
-// ==========================================
-// ÉRTESÍTÉSI PREFERENCIÁK KEZELÉSE
-// ==========================================
 fun getNotificationPref(context: Context, key: String, defaultVal: Boolean): Boolean {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getBoolean(key, defaultVal)
@@ -180,9 +173,6 @@ fun setNotificationPref(context: Context, key: String, value: Boolean) {
     prefs.edit().putBoolean(key, value).apply()
 }
 
-// ==========================================
-// ESEMÉNY & ÉRTESÍTÉS SZŰRŐ
-// ==========================================
 fun isEventAlreadyProcessed(context: Context, eventKey: String): Boolean {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     val processed = prefs.getStringSet("processed_events_set", emptySet()) ?: emptySet()
@@ -202,9 +192,6 @@ fun markEventAsProcessed(context: Context, eventKey: String) {
     }
 }
 
-// ==========================================
-// BANKROLL & VIRTUÁLIS EGYENLEG
-// ==========================================
 fun getVirtualBalance(context: Context): Double {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getFloat("virtual_balance", 50000f).toDouble()
@@ -240,9 +227,6 @@ fun updateSavedBetsStorage(context: Context, bets: List<SavedBet>) {
     prefs.edit().putString("saved_bets_json", json).apply()
 }
 
-// ==========================================
-// API CACHE MANAGER
-// ==========================================
 object ApiCacheManager {
     private val cacheMap = mutableMapOf<String, Pair<Long, Any>>()
     private const val DEFAULT_TTL_MS = 5 * 60 * 1000L
@@ -270,7 +254,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun saveGeminiApiKey(context: Context, key: String) {
@@ -281,7 +265,7 @@ fun saveGeminiApiKey(context: Context, key: String) {
 
 fun getGeminiApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun saveTheOddsApiKey(context: Context, key: String) {
@@ -292,12 +276,9 @@ fun saveTheOddsApiKey(context: Context, key: String) {
 
 fun getTheOddsApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
-// ==========================================
-// BAJNOKSÁG LEKÉPEZÉS (THE ODDS API KEYS)
-// ==========================================
 fun getTheOddsApiSportKey(leagueName: String?): String {
     val l = leagueName?.uppercase() ?: return "upcoming"
     return when {
@@ -316,9 +297,6 @@ fun getTheOddsApiSportKey(leagueName: String?): String {
     }
 }
 
-// ==========================================
-// THE ODDS API DEDIKÁLT ÉS MPT LEKÉRDEZŐ
-// ==========================================
 data class OddsApiResult(
     val home: String,
     val draw: String,
@@ -452,9 +430,6 @@ fun checkFuzzyMatch(s1: String, s2: String): Boolean {
     return words1.any { w -> w.length >= 4 && s2.contains(w) } || words2.any { w -> w.length >= 4 && s1.contains(w) }
 }
 
-// ==========================================
-// GOOGLE ML KIT OCR SEGÉDFÜGGVÉNY
-// ==========================================
 suspend fun extractTextFromBitmap(bitmap: Bitmap): String = suspendCancellableCoroutine { continuation ->
     try {
         val image = InputImage.fromBitmap(bitmap, 0)
@@ -471,35 +446,16 @@ suspend fun extractTextFromBitmap(bitmap: Bitmap): String = suspendCancellableCo
     }
 }
 
-// ==========================================
-// GEMINI VISION & OCR HIBRID SZELETVÉNYOLVASÓ
-// ==========================================
-data class GeminiMarketOdds(
-    val home: String,
-    val draw: String,
-    val away: String,
-    val bttsYes: String,
-    val bttsNo: String,
-    val over25: String,
-    val under25: String,
-    val bttsOver25: String,
-    val ht1: String,
-    val htX: String,
-    val ht2: String,
-    val redCardYes: String
-)
-
+// 🟢 JAVÍTOTT, STABIL GEMINI HÍVÁS (v1-es API VÉGPONT ÉS GEMINI-1.5-FLASH)
 suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<BetSlipItem>? {
     return withContext(Dispatchers.IO) {
         try {
-            // 1. Helyi Google ML Kit OCR kinyerés a stabil szöveges alapért
             val ocrText = try {
                 extractTextFromBitmap(bitmap)
             } catch (e: Exception) {
                 ""
             }
 
-            // 2. Kép optimalizálás (max 1024px)
             val maxDim = 1024
             val width = bitmap.width
             val height = bitmap.height
@@ -517,21 +473,23 @@ suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<
             val imageBytes = outputStream.toByteArray()
             val base64Image = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
 
-            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            // Használjuk a stabilabb v1 végpontot és a 1.5-flash modellt
+            val url = URL("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$apiKey")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             conn.doOutput = true
-            conn.connectTimeout = 15000
-            conn.readTimeout = 15000
+            conn.connectTimeout = 20000
+            conn.readTimeout = 20000
 
-            val promptText = "Ez egy sportfogadási / Tippmix szelvény. A helyi OCR motor által kinyert nyers szöveg a következő:\n" +
+            val promptText = "Ez egy sportfogadási Tippmix szelvény. A helyi OCR motor által kinyert szöveg:\n" +
                     "'''\n$ocrText\n'''\n\n" +
-                    "Kérlek elemezd ezt a szöveget és a csatolt képet, keresd meg a fogadási eseményeket és a tippeket! " +
-                    "Válaszolj KIZÁRÓLAG egy valid JSON tömbbel, ami az alábbi mezőket tartalmazza minden meccsnél:\n" +
+                    "Kérlek elemezd ezt a szöveget és a csatolt képet, és gyűjtsd ki a fogadási eseményeket, a tippeket és az oddsokat! " +
+                    "Válaszolj KIZÁRÓLAG egy valid JSON tömbbel, ami az alábbi mezőket tartalmazza minden egyes meccsnél:\n" +
                     "- 'matchTitle': a két csapat neve (Hazai vs Vendég formátumban)\n" +
-                    "- 'choiceName': a kiválasztott tipp (pl. '1', 'X', '2', 'Over 2.5', 'Mindkét csapat gól: Igen')\n" +
-                    "- 'odds': a tipphez tartozó odds tizedestörtként (szám, pl. 1.85)"
+                    "- 'choiceName': a kiválasztott tipp (pl. '1', 'X', '2', 'Több, mint 2,5', 'Hazai csapat – Gólszám 1,5 Több, mint 1,5')\n" +
+                    "- 'odds': a tipphez tartozó odds tizedestörtként (szám, pl. 1.35)\n" +
+                    "Ha nem találsz fogadási eseményt oddsokkal a képen, adj vissza egy üres JSON tömböt: []"
 
             val jsonPayload = JsonObject().apply {
                 val contentsArr = JsonArray().apply {
@@ -581,8 +539,13 @@ suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<
                     val jsonMatcher = Regex("\\[[\\s\\S]*?\\]").find(cleanedText)
                     val finalJsonString = jsonMatcher?.value ?: cleanedText
 
-                    val jsonElement = JsonParser().parse(finalJsonString)
-                    val jsonArray = if (jsonElement.isJsonArray) jsonElement.asJsonArray else return@withContext null
+                    val jsonElement = try {
+                        JsonParser().parse(finalJsonString)
+                    } catch (e: Exception) {
+                        return@withContext null
+                    }
+
+                    val jsonArray = if (jsonElement != null && jsonElement.isJsonArray) jsonElement.asJsonArray else return@withContext null
                     val resultList = mutableListOf<BetSlipItem>()
 
                     for (i in 0 until jsonArray.size()) {
@@ -594,7 +557,7 @@ suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<
 
                         resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
                     }
-                    return@withContext resultList
+                    return@withContext resultList.ifEmpty { null }
                 }
             } else {
                 val errStream = conn.errorStream?.bufferedReader()?.use { it.readText() }
@@ -608,10 +571,25 @@ suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<
     }
 }
 
+data class GeminiMarketOdds(
+    val home: String,
+    val draw: String,
+    val away: String,
+    val bttsYes: String,
+    val bttsNo: String,
+    val over25: String,
+    val under25: String,
+    val bttsOver25: String,
+    val ht1: String,
+    val htX: String,
+    val ht2: String,
+    val redCardYes: String
+)
+
 suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): GeminiMarketOdds? {
     return withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            val url = URL("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$apiKey")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
@@ -955,7 +933,7 @@ fun translateLeagueName(leagueName: String?): String {
         "GREECE" to "🇬🇷 GÖRÖGORSZÁG", "GUATEMALA" to "🇬🇹 GUATEMALA", "HONDURAS" to "🇭🇳 HONDURAS",
         "HUNGARY" to "🇭🇺 MAGYARORSZÁG", "ICELAND" to "🇮🇸 IZLAND", "INDIA" to "🇮🇳 INDIA", "INDONESIA" to "🇮🇩 INDONÉZIA",
         "IRAN" to "🇮🇷 IRÁN", "IRELAND" to "🇮🇪 ÍRORSZÁG", "ISRAEL" to "🇮🇱 IZRAEL",
-        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰ℤ KAZAHSZTÁN",
+        "ITALY" to "🇮🇹 OLASZORSZÁG", "JAPAN" to "🇯🇵 JAPÁN", "KAZAKHSTAN" to "🇰🇿 KAZAHSZTÁN",
         "KUWAIT" to "🇰🇼 KUVAT", "KYRGYZSTAN" to "🇰🇬 KIRGIZISZTÁN", "LATVIA" to "🇱🇻 LETTORSZÁG",
         "LITHUANIA" to "🇱🇹 LITVÁNIA", "LUXEMBOURG" to "🇱🇺 LUXEMBURG", "MEXICO" to "🇲🇽 MEXIKÓ",
         "MOLDOVA" to "🇲🇩 MOLDOVA", "MONTENEGRO" to "🇲🇪 MONTENEGRÓ", "MOROCCO" to "🇲🇦 MAROKKÓ",
@@ -1041,9 +1019,6 @@ fun translateReasoning(text: String?): String {
     return text?.takeIf { it.isNotBlank() } ?: "-"
 }
 
-// ==========================================
-// FUTÁR AI ALGORITMUS
-// ==========================================
 fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
     val status = (match.status ?: match.time ?: "").uppercase()
     val homeName = match.home?.name ?: "Hazai"
@@ -1079,7 +1054,7 @@ fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
             else -> {
                 Pair(
                     "⚔️ Kiélezett döntetlen állás",
-                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem now kulcsfontosságú."
+                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem most kulcsfontosságú."
                 )
             }
         }
@@ -1307,7 +1282,6 @@ fun MatchesListScreen(
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
 
-    // DEDIKÁLT BEOLVASÁSI LOGIKA (ML KIT OCR + GEMINI HIBRID ENGINE)
     val processBitmapScan: (Bitmap) -> Unit = { bitmap ->
         val geminiKey = getGeminiApiKey(context)
         if (geminiKey.isBlank()) {
@@ -1321,13 +1295,12 @@ fun MatchesListScreen(
                     onScanTicketItems(scanned)
                     Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről (OCR + AI)!", Toast.LENGTH_LONG).show()
                 } else {
-                    Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt. Próbáld újra egy tisztább fotóval!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Sajnos ezen a képen nem találtunk érvényes fogadási szelvényt/oddsokat!", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
-    // 1. GALÉRIA LAUNCHER
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             try {
@@ -1343,19 +1316,17 @@ fun MatchesListScreen(
         }
     }
 
-    // 2. ÉLŐ KAMERA LAUNCHER (FOTÓZÁS)
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
         if (bitmap != null) {
             processBitmapScan(bitmap)
         }
     }
 
-    // SZELVÉNY BEOLVASÓ FORRÁS VÁLASZTÓ DIALOG
     if (showScanSourceDialog) {
         AlertDialog(
             onDismissRequest = { showScanSourceDialog = false },
             title = { Text("📷 Szelvény Beolvasása (OCR)", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
-            text = { Text("Hogyan szeretnéd beolvasni a Tippmix / sportfogadási szelvényt?", color = colors.textMuted) },
+            text = { Text("Kérlek valódi Tippmix vagy fogadási szelvény fotóját válaszd ki a kamera vagy galéria segítségével!", color = colors.textMuted) },
             confirmButton = {
                 TextButton(onClick = {
                     showScanSourceDialog = false
@@ -3510,7 +3481,7 @@ fun BetSlipBar(
                     onScanTicketItems(scanned)
                     Toast.makeText(context, "🎉 ${scanned.size} tipp beolvasva!", Toast.LENGTH_LONG).show()
                 } else {
-                    Toast.makeText(context, "Sajnos nem sikerült beolvasni a szelvényt.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Sajnos ezen a képen nem találtunk érvényes fogadási szelvényt/oddsokat!", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -3535,7 +3506,7 @@ fun BetSlipBar(
         AlertDialog(
             onDismissRequest = { showBarScanSourceDialog = false },
             title = { Text("📷 Szelvény Beolvasása", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
-            text = { Text("Hogyan szeretnéd beolvasni a plusz fotót?", color = colors.textMuted) },
+            text = { Text("Kérlek valódi Tippmix vagy fogadási szelvény fotóját válaszd ki a kamera vagy galéria segítségével!", color = colors.textMuted) },
             confirmButton = {
                 TextButton(onClick = {
                     showBarScanSourceDialog = false
