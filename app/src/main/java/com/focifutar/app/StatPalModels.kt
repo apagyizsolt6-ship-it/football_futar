@@ -285,3 +285,55 @@ data class OddValue(
     val name: String? = null,
     val value: String? = null
 )
+
+// ==========================================
+// TABELLA (STANDINGS) MODELLEK
+// ==========================================
+data class StatPalStandingsResponse(
+    val standings: StandingsContainer? = null
+)
+
+data class StandingsContainer(
+    val updated: String? = null,
+    @SerializedName("updated_ts") val updatedTs: Any? = null,
+    val country: String? = null,
+    val tournament: TournamentData? = null
+)
+
+data class TournamentData(
+    val id: String? = null,
+    val league: String? = null,
+    val season: String? = null,
+    @SerializedName("stage_id") val stageId: String? = null,
+    @SerializedName("is_current") val isCurrent: String? = null,
+    val team: List<StandingTeamRow>? = emptyList()
+)
+
+data class StandingTeamRow(
+    val position: String? = null,
+    val name: String? = null,
+    val id: String? = null,
+    val status: String? = null,
+    @SerializedName("recent_form") val recentForm: String? = null,
+    val overall: StatScoreOverall? = null,
+    val total: StatScoreTotal? = null,
+    val description: StatDescription? = null
+)
+
+data class StatScoreOverall(
+    @SerializedName("games_played") val gamesPlayed: String? = null,
+    val wins: String? = null,
+    val draws: String? = null,
+    val losses: String? = null,
+    @SerializedName("goals_scored") val goalsScored: String? = null,
+    @SerializedName("goals_allowed") val goalsAllowed: String? = null
+)
+
+data class StatScoreTotal(
+    @SerializedName("goal_difference") val goalDifference: String? = null,
+    val points: String? = null
+)
+
+data class StatDescription(
+    val value: String? = null
+)
