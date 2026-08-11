@@ -8,14 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -56,24 +53,14 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
-
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
-import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -257,17 +244,6 @@ fun getApiKey(context: Context): String {
     return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
-fun saveGeminiApiKey(context: Context, key: String) {
-    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    val cleanKey = key.trim().replace("\"", "").replace("'", "")
-    prefs.edit().putString("gemini_api_key", cleanKey).apply()
-}
-
-fun getGeminiApiKey(context: Context): String {
-    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("gemini_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
-}
-
 fun saveTheOddsApiKey(context: Context, key: String) {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     val cleanKey = key.trim().replace("\"", "").replace("'", "")
@@ -305,6 +281,11 @@ data class OddsApiResult(
     val under25: String,
     val homeSpread: String,
     val awaySpread: String,
+    val doubleChance1X: String,
+    val doubleChance12: String,
+    val doubleChanceX2: String,
+    val dnbHome: String,
+    val dnbAway: String,
     val bookmakerName: String
 )
 
@@ -316,7 +297,7 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
             var rawJson: String? = ApiCacheManager.get(cacheKey, 15 * 60 * 1000L)
 
             if (rawJson == null) {
-                val url = URL("https://api.the-odds-api.com/v4/sports/$sportKey/odds/?apiKey=$apiKey&regions=eu&markets=h2h,totals,spreads")
+                val url = URL("https://api.the-odds-api.com/v4/sports/$sportKey/odds/?apiKey=$apiKey&regions=eu&markets=h2h,totals,spreads,double_chance,draw_no_bet")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.connectTimeout = 6000
@@ -335,8 +316,10 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
 
                 for (i in 0 until jsonArray.size()) {
                     val event = jsonArray.get(i).asJsonObject
-                    val eHome = event.get("home_team")?.asString?.lowercase() ?: ""
-                    val eAway = event.get("away_team")?.asString?.lowercase() ?: ""
+                    val eHomeElem = event.get("home_team")?.asString
+                    val eAwayElem = event.get("away_team")?.asString
+                    val eHome = eHomeElem?.lowercase() ?: ""
+                    val eAway = eAwayElem?.lowercase() ?: ""
 
                     val matchHome = eHome.contains(homeClean) || homeClean.contains(eHome) || checkFuzzyMatch(eHome, homeClean)
                     val matchAway = eAway.contains(awayClean) || awayClean.contains(eAway) || checkFuzzyMatch(eAway, awayClean)
@@ -355,6 +338,11 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
                             var u25Odd = "1.90"
                             var hSpread = "1.90"
                             var aSpread = "1.90"
+                            var dc1X = "1.25"
+                            var dc12 = "1.30"
+                            var dcX2 = "1.70"
+                            var dnbH = "1.45"
+                            var dnbA = "2.40"
 
                             for (m in 0 until markets.size()) {
                                 val market = markets.get(m).asJsonObject
@@ -369,8 +357,8 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
                                             val price = out.get("price")?.asDouble ?: 1.0
                                             val priceStr = String.format(Locale.US, "%.2f", price)
 
-                                            if (name.equals(event.get("home_team")?.asString, ignoreCase = true)) hOdd = priceStr
-                                            else if (name.equals(event.get("away_team")?.asString, ignoreCase = true)) aOdd = priceStr
+                                            if (name.equals(eHomeElem, ignoreCase = true)) hOdd = priceStr
+                                            else if (name.equals(eAwayElem, ignoreCase = true)) aOdd = priceStr
                                             else dOdd = priceStr
                                         }
                                     }
@@ -395,8 +383,29 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
                                             val price = out.get("price")?.asDouble ?: 1.0
                                             val priceStr = String.format(Locale.US, "%.2f", price)
 
-                                            if (name.equals(event.get("home_team")?.asString, ignoreCase = true)) hSpread = priceStr
+                                            if (name.equals(eHomeElem, ignoreCase = true)) hSpread = priceStr
                                             else aSpread = priceStr
+                                        }
+                                    }
+                                    "double_chance" -> {
+                                        for (o in 0 until outcomes.size()) {
+                                            val out = outcomes.get(o).asJsonObject
+                                            val name = out.get("name")?.asString ?: ""
+                                            val price = out.get("price")?.asDouble ?: 1.0
+                                            val priceStr = String.format(Locale.US, "%.2f", price)
+                                            if (name.contains("Home/Draw", ignoreCase = true) || name.equals("$eHomeElem / Draw", ignoreCase = true)) dc1X = priceStr
+                                            else if (name.contains("Home/Away", ignoreCase = true)) dc12 = priceStr
+                                            else if (name.contains("Draw/Away", ignoreCase = true)) dcX2 = priceStr
+                                        }
+                                    }
+                                    "draw_no_bet" -> {
+                                        for (o in 0 until outcomes.size()) {
+                                            val out = outcomes.get(o).asJsonObject
+                                            val name = out.get("name")?.asString ?: ""
+                                            val price = out.get("price")?.asDouble ?: 1.0
+                                            val priceStr = String.format(Locale.US, "%.2f", price)
+                                            if (name.equals(eHomeElem, ignoreCase = true)) dnbH = priceStr
+                                            else if (name.equals(eAwayElem, ignoreCase = true)) dnbA = priceStr
                                         }
                                     }
                                 }
@@ -410,6 +419,11 @@ suspend fun fetchOddsFromTheOddsApi(apiKey: String, leagueName: String?, home: S
                                 under25 = u25Odd,
                                 homeSpread = hSpread,
                                 awaySpread = aSpread,
+                                doubleChance1X = dc1X,
+                                doubleChance12 = dc12,
+                                doubleChanceX2 = dcX2,
+                                dnbHome = dnbH,
+                                dnbAway = dnbA,
                                 bookmakerName = "🎯 $bookieTitle"
                             )
                         }
@@ -428,232 +442,6 @@ fun checkFuzzyMatch(s1: String, s2: String): Boolean {
     val words1 = s1.split(" ")
     val words2 = s2.split(" ")
     return words1.any { w -> w.length >= 4 && s2.contains(w) } || words2.any { w -> w.length >= 4 && s1.contains(w) }
-}
-
-suspend fun extractTextFromBitmap(bitmap: Bitmap): String = suspendCancellableCoroutine { continuation ->
-    try {
-        val image = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        recognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                continuation.resume(visionText.text)
-            }
-            .addOnFailureListener { e ->
-                continuation.resumeWithException(e)
-            }
-    } catch (e: Exception) {
-        continuation.resumeWithException(e)
-    }
-}
-
-suspend fun processTicketBitmapWithGemini(bitmap: Bitmap, apiKey: String): List<BetSlipItem>? {
-    return withContext(Dispatchers.IO) {
-        try {
-            val ocrText = try {
-                extractTextFromBitmap(bitmap)
-            } catch (e: Exception) {
-                ""
-            }
-
-            val maxDim = 1024
-            val width = bitmap.width
-            val height = bitmap.height
-            val scaledBitmap = if (width > maxDim || height > maxDim) {
-                val ratio = width.toFloat() / height.toFloat()
-                val targetWidth = if (width > height) maxDim else (maxDim * ratio).toInt()
-                val targetHeight = if (height > width) maxDim else (maxDim / ratio).toInt()
-                Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
-            } else {
-                bitmap
-            }
-
-            val outputStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-            val imageBytes = outputStream.toByteArray()
-            val base64Image = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
-
-            val url = URL("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$apiKey")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            conn.connectTimeout = 20000
-            conn.readTimeout = 20000
-
-            val promptText = "Ez egy sportfogadási Tippmix szelvény. A helyi OCR motor által kinyert szöveg:\n" +
-                    "'''\n$ocrText\n'''\n\n" +
-                    "Kérlek elemezd ezt a szöveget és a csatolt képet, és gyűjtsd ki a fogadási eseményeket, a tippeket és az oddsokat! " +
-                    "Válaszolj KIZÁRÓLAG egy valid JSON tömbbel, ami az alábbi mezőket tartalmazza minden egyes meccsnél:\n" +
-                    "- 'matchTitle': a két csapat neve (Hazai vs Vendég formátumban)\n" +
-                    "- 'choiceName': a kiválasztott tipp (pl. '1', 'X', '2', 'Több, mint 2,5', 'Hazai csapat – Gólszám 1,5 Több, mint 1,5')\n" +
-                    "- 'odds': a tipphez tartozó odds tizedestörtként (szám, pl. 1.35)\n" +
-                    "Ha nem találsz fogadási eseményt oddsokkal a képen, adj vissza egy üres JSON tömböt: []"
-
-            val jsonPayload = JsonObject().apply {
-                val contentsArr = JsonArray().apply {
-                    val contentObj = JsonObject().apply {
-                        val partsArr = JsonArray().apply {
-                            add(JsonObject().apply { addProperty("text", promptText) })
-                            add(JsonObject().apply {
-                                add("inlineData", JsonObject().apply {
-                                    addProperty("mimeType", "image/jpeg")
-                                    addProperty("data", base64Image)
-                                })
-                            })
-                        }
-                        add("parts", partsArr)
-                    }
-                    add(contentObj)
-                }
-                add("contents", contentsArr)
-                add("generationConfig", JsonObject().apply {
-                    addProperty("responseMimeType", "application/json")
-                })
-            }
-
-            val writer = conn.outputStream.bufferedWriter(Charsets.UTF_8)
-            writer.write(jsonPayload.toString())
-            writer.flush()
-            writer.close()
-
-            if (conn.responseCode == 200) {
-                val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val jsonObj = JsonParser().parse(responseStr).asJsonObject
-                val candidates = jsonObj.getAsJsonArray("candidates") ?: return@withContext null
-
-                if (candidates.size() > 0) {
-                    val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
-                    val parts = content.getAsJsonArray("parts")
-
-                    var rawText = ""
-                    for (i in 0 until parts.size()) {
-                        val partObj = parts.get(i).asJsonObject
-                        if (partObj.has("text")) {
-                            rawText += partObj.get("text").asString
-                        }
-                    }
-
-                    val cleanedText = rawText.replace("```json", "").replace("```", "").trim()
-                    val jsonMatcher = Regex("\\[[\\s\\S]*?\\]").find(cleanedText)
-                    val finalJsonString = jsonMatcher?.value ?: cleanedText
-
-                    val jsonElement = try {
-                        JsonParser().parse(finalJsonString)
-                    } catch (e: Exception) {
-                        return@withContext null
-                    }
-
-                    val jsonArray = if (jsonElement != null && jsonElement.isJsonArray) jsonElement.asJsonArray else return@withContext null
-                    val resultList = mutableListOf<BetSlipItem>()
-
-                    for (i in 0 until jsonArray.size()) {
-                        val itemObj = jsonArray.get(i).asJsonObject
-                        val matchTitle = itemObj.get("matchTitle")?.asString ?: "Szelvény meccs"
-                        val choiceName = itemObj.get("choiceName")?.asString ?: "Tipp"
-                        val odds = itemObj.get("odds")?.asDouble ?: 1.80
-                        val matchId = "scanned_${UUID.randomUUID().toString().take(6)}"
-
-                        resultList.add(BetSlipItem(matchId, matchTitle, choiceName, odds))
-                    }
-                    return@withContext resultList.ifEmpty { null }
-                }
-            } else {
-                val errStream = conn.errorStream?.bufferedReader()?.use { it.readText() }
-                android.util.Log.e("GeminiScanError", "HTTP Code ${conn.responseCode}: $errStream")
-            }
-            null
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-}
-
-data class GeminiMarketOdds(
-    val home: String,
-    val draw: String,
-    val away: String,
-    val bttsYes: String,
-    val bttsNo: String,
-    val over25: String,
-    val under25: String,
-    val bttsOver25: String,
-    val ht1: String,
-    val htX: String,
-    val ht2: String,
-    val redCardYes: String
-)
-
-suspend fun fetchOddsFromGemini(apiKey: String, home: String, away: String): GeminiMarketOdds? {
-    return withContext(Dispatchers.IO) {
-        try {
-            val url = URL("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$apiKey")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-
-            val prompt = "Keresd meg az interneten a $home vs $away meccs legfrissebb fogadási oddsait (1X2, Gól-gól, Over/Under 2.5, Félidő 1X2). " +
-                    "A válaszodban KIZÁRÓLAG egyetlen valid JSON objektum szerepeljen, semmilyen más szöveg! " +
-                    "Formátum: {\"home\":\"1.80\",\"draw\":\"3.40\",\"away\":\"3.90\",\"bttsYes\":\"1.75\",\"bttsNo\":\"1.95\",\"over25\":\"1.85\",\"under25\":\"1.90\",\"bttsOver25\":\"2.30\",\"ht1\":\"2.40\",\"htX\":\"2.10\",\"ht2\":\"3.10\",\"redCardYes\":\"3.50\"}"
-
-            val body = """
-                {
-                  "contents": [{
-                    "parts": [{ "text": "$prompt" }]
-                  }],
-                  "generationConfig": {
-                    "responseMimeType": "application/json"
-                  }
-                }
-            """.trimIndent()
-
-            conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
-
-            if (conn.responseCode == 200) {
-                val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val jsonObj = JsonParser().parse(responseStr).asJsonObject
-                val candidates = jsonObj.getAsJsonArray("candidates") ?: return@withContext null
-
-                if (candidates.size() > 0) {
-                    val content = candidates.get(0).asJsonObject.getAsJsonObject("content")
-                    val parts = content.getAsJsonArray("parts")
-
-                    var rawText = ""
-                    for (i in 0 until parts.size()) {
-                        val partObj = parts.get(i).asJsonObject
-                        if (partObj.has("text")) {
-                            rawText += partObj.get("text").asString + "\n"
-                        }
-                    }
-
-                    val jsonMatcher = Regex("\\{[\\s\\S]*?\\}").find(rawText)
-                    val jsonString = jsonMatcher?.value
-
-                    if (!jsonString.isNullOrBlank()) {
-                        val oddsObj = JsonParser().parse(jsonString).asJsonObject
-                        return@withContext GeminiMarketOdds(
-                            home = oddsObj.get("home")?.asString ?: "1.95",
-                            draw = oddsObj.get("draw")?.asString ?: "3.40",
-                            away = oddsObj.get("away")?.asString ?: "3.75",
-                            bttsYes = oddsObj.get("bttsYes")?.asString ?: "1.75",
-                            bttsNo = oddsObj.get("bttsNo")?.asString ?: "1.95",
-                            over25 = oddsObj.get("over25")?.asString ?: "1.85",
-                            under25 = oddsObj.get("under25")?.asString ?: "1.90",
-                            bttsOver25 = oddsObj.get("bttsOver25")?.asString ?: "2.35",
-                            ht1 = oddsObj.get("ht1")?.asString ?: "2.40",
-                            htX = oddsObj.get("htX")?.asString ?: "2.10",
-                            ht2 = oddsObj.get("ht2")?.asString ?: "3.10",
-                            redCardYes = oddsObj.get("redCardYes")?.asString ?: "3.50"
-                        )
-                    }
-                }
-            }
-            null
-        } catch (e: Exception) {
-            null
-        }
-    }
 }
 
 fun getFavoriteMatchIds(context: Context): Set<String> {
@@ -1053,7 +841,7 @@ fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
             else -> {
                 Pair(
                     "⚔️ Kiélezett döntetlen állás",
-                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem most kulcsfontosságú."
+                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem now kulcsfontosságú."
                 )
             }
         }
@@ -1161,9 +949,6 @@ class MainActivity : ComponentActivity() {
                                 onToggleDarkMode = { newMode ->
                                     isDarkMode = newMode
                                     saveDarkMode(context, newMode)
-                                },
-                                onScanTicketItems = { scannedItems ->
-                                    betSlipItems = betSlipItems + scannedItems
                                 }
                             )
                         }
@@ -1197,6 +982,9 @@ class MainActivity : ComponentActivity() {
                                 items = betSlipItems,
                                 colors = colors,
                                 onClear = { betSlipItems = emptyList() },
+                                onRemoveItem = { matchId, choiceName ->
+                                    betSlipItems = betSlipItems.filter { !(it.matchId == matchId && it.choiceName == choiceName) }
+                                },
                                 onSaveBet = { stake ->
                                     val currentBal = getVirtualBalance(context)
                                     if (currentBal >= stake) {
@@ -1231,9 +1019,6 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         Toast.makeText(context, "Nincs elég virtuális egyenleged!", Toast.LENGTH_SHORT).show()
                                     }
-                                },
-                                onScanTicketItems = { scannedItems ->
-                                    betSlipItems = betSlipItems + scannedItems
                                 }
                             )
                         }
@@ -1249,8 +1034,7 @@ fun MatchesListScreen(
     navController: NavController,
     isDarkMode: Boolean,
     colors: AppColors,
-    onToggleDarkMode: (Boolean) -> Unit,
-    onScanTicketItems: (List<BetSlipItem>) -> Unit
+    onToggleDarkMode: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1272,79 +1056,12 @@ fun MatchesListScreen(
     var leagues by remember { mutableStateOf<List<StatPalLeague>>(emptyList()) }
     var collapsedLeagueIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(false) }
-    var isScanningTicket by remember { mutableStateOf(false) }
-    var showScanSourceDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var previousScoresMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var finishedMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     var halftimeMatchesMap by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     var flashingMatchesState by remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
-
-    val processBitmapScan: (Bitmap) -> Unit = { bitmap ->
-        val geminiKey = getGeminiApiKey(context)
-        if (geminiKey.isBlank()) {
-            Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️)!", Toast.LENGTH_LONG).show()
-        } else {
-            isScanningTicket = true
-            coroutineScope.launch {
-                val scanned = processTicketBitmapWithGemini(bitmap, geminiKey)
-                isScanningTicket = false
-                if (!scanned.isNullOrEmpty()) {
-                    onScanTicketItems(scanned)
-                    Toast.makeText(context, "🎉 ${scanned.size} tipp sikeresen beolvasva a szelvényről (OCR + AI)!", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, "Sajnos ezen a képen nem találtunk érvényes fogadási szelvényt/oddsokat!", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-                if (bitmap != null) {
-                    processBitmapScan(bitmap)
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Nem sikerült betölteni a képet!", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
-        if (bitmap != null) {
-            processBitmapScan(bitmap)
-        }
-    }
-
-    if (showScanSourceDialog) {
-        AlertDialog(
-            onDismissRequest = { showScanSourceDialog = false },
-            title = { Text("📷 Szelvény Beolvasása (OCR)", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
-            text = { Text("Kérlek valódi Tippmix vagy fogadási szelvény fotóját válaszd ki a kamera vagy galéria segítségével!", color = colors.textMuted) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showScanSourceDialog = false
-                    cameraLauncher.launch(null)
-                }) {
-                    Text("📸 Fotózás (Kamera)", color = colors.accentPrimary, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showScanSourceDialog = false
-                    galleryLauncher.launch("image/*")
-                }) {
-                    Text("🖼️ Galéria", color = colors.textPrimary)
-                }
-            },
-            containerColor = colors.cardBackground
-        )
-    }
 
     fun fetchMatches(forceRefresh: Boolean = false) {
         val apiKey = getApiKey(context)
@@ -1647,18 +1364,6 @@ fun MatchesListScreen(
                             .padding(8.dp)
                     ) {
                         Text(text = "🔍", fontSize = 13.sp)
-                    }
-                }
-
-                item {
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(if (isScanningTicket) colors.accentYellow else colors.cardBackground)
-                            .clickable { showScanSourceDialog = true }
-                            .padding(8.dp)
-                    ) {
-                        Text(text = if (isScanningTicket) "⏳" else "📷", fontSize = 13.sp)
                     }
                 }
 
@@ -2183,19 +1888,33 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(bet.dateStr, color = colors.textMuted, fontSize = 10.sp)
-                                Text(
-                                    text = bet.status,
-                                    color = when (bet.status) {
-                                        "NYERT" -> Color(0xFF22C55E)
-                                        "VESZÍTETT" -> Color(0xFFEF4444)
-                                        else -> colors.accentYellow
-                                    },
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = bet.status,
+                                        color = when (bet.status) {
+                                            "NYERT" -> Color(0xFF22C55E)
+                                            "VESZÍTETT" -> Color(0xFFEF4444)
+                                            else -> colors.accentYellow
+                                        },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "❌",
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.clickable {
+                                            val updated = savedBets.filter { it.id != bet.id }
+                                            updateSavedBetsStorage(context, updated)
+                                            savedBets = updated
+                                            Toast.makeText(context, "Fogadás törölve!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             bet.items.forEach { item ->
@@ -2656,7 +2375,7 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐK", "AI TIPP", "TABELLA", "ESEMÉNYEK")
+    val tabs = listOf("ODDSOK", "H2H", "HIÁNYZÓK", "KEZDŐk", "AI TIPP", "TABELLA", "ESEMÉNYEK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var isLoadingH2H by remember { mutableStateOf(false) }
@@ -3208,11 +2927,9 @@ fun OddsTab(
     onToggleOdds: (BetSlipItem) -> Unit
 ) {
     val context = LocalContext.current
-    val geminiKey = getGeminiApiKey(context)
     val theOddsApiKey = getTheOddsApiKey(context)
 
     var oddsApiResult by remember { mutableStateOf<OddsApiResult?>(null) }
-    var geminiOdds by remember { mutableStateOf<GeminiMarketOdds?>(null) }
     var isFetchingExternalOdds by remember { mutableStateOf(false) }
     var externalTried by remember { mutableStateOf(false) }
 
@@ -3230,25 +2947,15 @@ fun OddsTab(
     val apiHomeOdd = oddsList.find { it.name.equals("Home", ignoreCase = true) }?.value
     val hasStatPalOdds = !apiHomeOdd.isNullOrBlank()
 
-    LaunchedEffect(match, prematchOddsMatch, theOddsApiKey, geminiKey) {
-        if (!hasStatPalOdds && !externalTried) {
+    LaunchedEffect(match, prematchOddsMatch, theOddsApiKey) {
+        if (!hasStatPalOdds && !externalTried && theOddsApiKey.isNotBlank()) {
             isFetchingExternalOdds = true
             externalTried = true
 
-            if (theOddsApiKey.isNotBlank()) {
-                val res = fetchOddsFromTheOddsApi(theOddsApiKey, leagueName, homeName, awayName)
-                if (res != null) {
-                    oddsApiResult = res
-                }
+            val res = fetchOddsFromTheOddsApi(theOddsApiKey, leagueName, homeName, awayName)
+            if (res != null) {
+                oddsApiResult = res
             }
-
-            if (geminiKey.isNotBlank()) {
-                val gRes = fetchOddsFromGemini(geminiKey, homeName, awayName)
-                if (gRes != null) {
-                    geminiOdds = gRes
-                }
-            }
-
             isFetchingExternalOdds = false
         }
     }
@@ -3259,7 +2966,7 @@ fun OddsTab(
                 CircularProgressIndicator(color = colors.accentPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (theOddsApiKey.isNotBlank()) "🎯 Az összes fogadási piac gyűjtése..." else "🤖 Gemini Web Odds gyűjtése...",
+                    text = "🎯 Az összes fogadási piac gyűjtése...",
                     color = colors.textMuted,
                     fontSize = 12.sp
                 )
@@ -3268,27 +2975,25 @@ fun OddsTab(
         return
     }
 
-    val homeOddVal = apiHomeOdd ?: oddsApiResult?.home ?: geminiOdds?.home ?: "1.95"
-    val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value ?: oddsApiResult?.draw ?: geminiOdds?.draw ?: "3.40"
-    val awayOddVal = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value ?: oddsApiResult?.away ?: geminiOdds?.away ?: "3.75"
+    val homeOddVal = apiHomeOdd ?: oddsApiResult?.home ?: "1.95"
+    val drawOddVal = oddsList.find { it.name.equals("Draw", ignoreCase = true) }?.value ?: oddsApiResult?.draw ?: "3.40"
+    val awayOddVal = oddsList.find { it.name.equals("Away", ignoreCase = true) }?.value ?: oddsApiResult?.away ?: "3.75"
 
-    val bttsYesVal = geminiOdds?.bttsYes ?: "1.75"
-    val bttsNoVal = geminiOdds?.bttsNo ?: "1.95"
-    val over25Val = oddsApiResult?.over25 ?: geminiOdds?.over25 ?: "1.85"
-    val under25Val = oddsApiResult?.under25 ?: geminiOdds?.under25 ?: "1.90"
-    
+    val over25Val = oddsApiResult?.over25 ?: "1.85"
+    val under25Val = oddsApiResult?.under25 ?: "1.90"
     val homeSpreadVal = oddsApiResult?.homeSpread ?: "1.90"
     val awaySpreadVal = oddsApiResult?.awaySpread ?: "1.90"
-    val comboVal = geminiOdds?.bttsOver25 ?: "2.35"
     
-    val ht1Val = geminiOdds?.ht1 ?: "2.40"
-    val htXVal = geminiOdds?.htX ?: "2.10"
-    val ht2Val = geminiOdds?.ht2 ?: "3.10"
+    val dc1XVal = oddsApiResult?.doubleChance1X ?: "1.25"
+    val dc12Val = oddsApiResult?.doubleChance12 ?: "1.30"
+    val dcX2Val = oddsApiResult?.doubleChanceX2 ?: "1.70"
+    
+    val dnbHVal = oddsApiResult?.dnbHome ?: "1.45"
+    val dnbAVal = oddsApiResult?.dnbAway ?: "2.40"
 
     val bookmakerName = when {
         !apiHomeOdd.isNullOrBlank() -> bookmaker?.name ?: "StatPal Odds"
         oddsApiResult != null -> oddsApiResult?.bookmakerName ?: "🎯 The Odds API (Teljes Piac)"
-        geminiOdds != null -> "🤖 Gemini Web Odds"
         else -> "⚡ Futár Smart Odds (Okos becslés)"
     }
 
@@ -3335,22 +3040,42 @@ fun OddsTab(
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("⚽ GÓL PIACOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("🛡️ KÉTESÉLYES (DOUBLE CHANCE)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val isBttsYes = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gól-gól (Igen)" }
-                        val isBttsNo = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gól-gól (Nem)" }
+                        val is1X = betSlipItems.any { it.matchId == matchId && it.choiceName == "1X (Hazai vagy Döntetlen)" }
+                        val is12 = betSlipItems.any { it.matchId == matchId && it.choiceName == "12 (Hazai vagy Vendég)" }
+                        val isX2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "X2 (Döntetlen vagy Vendég)" }
+
+                        OddsBox("1X", dc1XVal, isSelected = is1X, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = dc1XVal.toDoubleOrNull() ?: 1.25
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1X (Hazai vagy Döntetlen)", v))
+                        }
+                        OddsBox("12", dc12Val, isSelected = is12, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = dc12Val.toDoubleOrNull() ?: 1.30
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "12 (Hazai vagy Vendég)", v))
+                        }
+                        OddsBox("X2", dcX2Val, isSelected = isX2, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = dcX2Val.toDoubleOrNull() ?: 1.70
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "X2 (Döntetlen vagy Vendég)", v))
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("⚽ GÓL PIACOK (OVER / UNDER)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         val isOver = betSlipItems.any { it.matchId == matchId && it.choiceName == "Over 2.5 gól" }
                         val isUnder = betSlipItems.any { it.matchId == matchId && it.choiceName == "Under 2.5 gól" }
 
-                        OddsBox("GG Igen", bttsYesVal, isSelected = isBttsYes, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = bttsYesVal.toDoubleOrNull() ?: 1.75
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Gól-gól (Igen)", v))
-                        }
-                        OddsBox("GG Nem", bttsNoVal, isSelected = isBttsNo, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = bttsNoVal.toDoubleOrNull() ?: 1.95
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Gól-gól (Nem)", v))
-                        }
                         OddsBox("Over 2.5", over25Val, isSelected = isOver, colors = colors, modifier = Modifier.weight(1f)) {
                             val v = over25Val.toDoubleOrNull() ?: 1.85
                             onToggleOdds(BetSlipItem(matchId, matchTitle, "Over 2.5 gól", v))
@@ -3370,19 +3095,19 @@ fun OddsTab(
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("🛡️ HANDIKAP & ÁZSIAI PIACOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("🔒 DÖNTETLEN ESETÉN NINCS FOGADÁS (DNB)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val isHSp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai Handikap" }
-                        val isASp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég Handikap" }
+                        val isDnbH = betSlipItems.any { it.matchId == matchId && it.choiceName == "DNB Hazai ($homeName)" }
+                        val isDnbA = betSlipItems.any { it.matchId == matchId && it.choiceName == "DNB Vendég ($awayName)" }
 
-                        OddsBox("Hazai (+0.5/-0.5)", homeSpreadVal, isSelected = isHSp, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = homeSpreadVal.toDoubleOrNull() ?: 1.90
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai Handikap", v))
+                        OddsBox("DNB 1", dnbHVal, isSelected = isDnbH, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = dnbHVal.toDoubleOrNull() ?: 1.45
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "DNB Hazai ($homeName)", v))
                         }
-                        OddsBox("Vendég (+0.5/-0.5)", awaySpreadVal, isSelected = isASp, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = awaySpreadVal.toDoubleOrNull() ?: 1.90
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég Handikap", v))
+                        OddsBox("DNB 2", dnbAVal, isSelected = isDnbA, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = dnbAVal.toDoubleOrNull() ?: 2.40
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "DNB Vendég ($awayName)", v))
                         }
                     }
                 }
@@ -3395,29 +3120,19 @@ fun OddsTab(
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("⏱️ FÉLIDŐ & EGYÉB", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("⚖️ HANDIKAP PIACOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val isHt1 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Félidő 1" }
-                        val isHtX = betSlipItems.any { it.matchId == matchId && it.choiceName == "Félidő X" }
-                        val isHt2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Félidő 2" }
-                        val isCombo = betSlipItems.any { it.matchId == matchId && it.choiceName == "GG + Over 2.5" }
+                        val isHSp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai Handikap" }
+                        val isASp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég Handikap" }
 
-                        OddsBox("HT 1", ht1Val, isSelected = isHt1, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = ht1Val.toDoubleOrNull() ?: 2.40
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Félidő 1", v))
+                        OddsBox("Hazai (-1.5)", homeSpreadVal, isSelected = isHSp, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = homeSpreadVal.toDoubleOrNull() ?: 1.90
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai Handikap", v))
                         }
-                        OddsBox("HT X", htXVal, isSelected = isHtX, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = htXVal.toDoubleOrNull() ?: 2.10
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Félidő X", v))
-                        }
-                        OddsBox("HT 2", ht2Val, isSelected = isHt2, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = ht2Val.toDoubleOrNull() ?: 3.10
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Félidő 2", v))
-                        }
-                        OddsBox("GG+Over", comboVal, isSelected = isCombo, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = comboVal.toDoubleOrNull() ?: 2.35
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "GG + Over 2.5", v))
+                        OddsBox("Vendég (+1.5)", awaySpreadVal, isSelected = isASp, colors = colors, modifier = Modifier.weight(1f)) {
+                            val v = awaySpreadVal.toDoubleOrNull() ?: 1.90
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég Handikap", v))
                         }
                     }
                 }
@@ -3457,74 +3172,12 @@ fun BetSlipBar(
     items: List<BetSlipItem>,
     colors: AppColors,
     onClear: () -> Unit,
-    onSaveBet: (Double) -> Unit,
-    onScanTicketItems: (List<BetSlipItem>) -> Unit
+    onRemoveItem: (String, String) -> Unit,
+    onSaveBet: (Double) -> Unit
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     var isExpanded by remember { mutableStateOf(false) }
     var stakeInput by remember { mutableStateOf("1000") }
-    var isScanningInBar by remember { mutableStateOf(false) }
-    var showBarScanSourceDialog by remember { mutableStateOf(false) }
-
-    val processBarBitmapScan: (Bitmap) -> Unit = { bitmap ->
-        val geminiKey = getGeminiApiKey(context)
-        if (geminiKey.isBlank()) {
-            Toast.makeText(context, "Kérlek add meg a Gemini API kulcsodat a Beállításokban (⚙️)!", Toast.LENGTH_LONG).show()
-        } else {
-            isScanningInBar = true
-            coroutineScope.launch {
-                val scanned = processTicketBitmapWithGemini(bitmap, geminiKey)
-                isScanningInBar = false
-                if (!scanned.isNullOrEmpty()) {
-                    onScanTicketItems(scanned)
-                    Toast.makeText(context, "🎉 ${scanned.size} tipp beolvasva!", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, "Sajnos ezen a képen nem találtunk érvényes fogadási szelvényt/oddsokat!", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    val barGalleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-                if (bitmap != null) processBarBitmapScan(bitmap)
-            } catch (_: Exception) {}
-        }
-    }
-
-    val barCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
-        if (bitmap != null) processBarBitmapScan(bitmap)
-    }
-
-    if (showBarScanSourceDialog) {
-        AlertDialog(
-            onDismissRequest = { showBarScanSourceDialog = false },
-            title = { Text("📷 Szelvény Beolvasása", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
-            text = { Text("Kérlek valódi Tippmix vagy fogadási szelvény fotóját válaszd ki a kamera vagy galéria segítségével!", color = colors.textMuted) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showBarScanSourceDialog = false
-                    barCameraLauncher.launch(null)
-                }) {
-                    Text("📸 Fotózás (Kamera)", color = colors.accentPrimary, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showBarScanSourceDialog = false
-                    barGalleryLauncher.launch("image/*")
-                }) {
-                    Text("🖼️ Galéria", color = colors.textPrimary)
-                }
-            },
-            containerColor = colors.cardBackground
-        )
-    }
 
     val totalOdds = remember(items) {
         items.fold(1.0) { acc, item -> acc * item.odds }
@@ -3581,14 +3234,25 @@ fun BetSlipBar(
                         items.forEach { item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("${item.matchTitle}: ${item.choiceName}", color = colors.textPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                                Text(String.format(Locale.US, "%.2f", item.odds), color = colors.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(item.matchTitle, color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("${item.choiceName} (${item.odds})", color = colors.accentPrimary, fontSize = 11.sp)
+                                }
+                                Text(
+                                    text = "❌",
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .clickable { onRemoveItem(item.matchId, item.choiceName) }
+                                        .padding(4.dp)
+                                )
                             }
+                            Divider(color = colors.border.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 2.dp))
                         }
 
-                        Divider(color = colors.border, modifier = Modifier.padding(vertical = 4.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -3667,28 +3331,13 @@ fun BetSlipBar(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Button(
+                            onClick = { onSaveBet(stake) },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Button(
-                                onClick = { showBarScanSourceDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.cardBackground),
-                                border = BorderStroke(1.dp, colors.accentYellow),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(0.4f)
-                            ) {
-                                Text(if (isScanningInBar) "⏳" else "📷 Fotó", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            }
-
-                            Button(
-                                onClick = { onSaveBet(stake) },
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(0.6f)
-                            ) {
-                                Text("Mentés (Virtuális tét)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            }
+                            Text("Mentés (Virtuális tét)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }
@@ -3778,7 +3427,6 @@ fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean, color
 fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
-    var geminiKeyInput by remember { mutableStateOf(getGeminiApiKey(context)) }
     var theOddsKeyInput by remember { mutableStateOf(getTheOddsApiKey(context)) }
 
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
@@ -3849,30 +3497,6 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
             visualTransformation = PasswordVisualTransformation(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = colors.accentYellow,
-                unfocusedBorderColor = colors.border,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Gemini API Kulcs (Vision Szelvény Beolvasóhoz)",
-            color = colors.accentPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        OutlinedTextField(
-            value = geminiKeyInput,
-            onValueChange = { geminiKeyInput = it },
-            label = { Text("Gemini API Key", color = colors.textMuted) },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = colors.accentPrimary,
                 unfocusedBorderColor = colors.border,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary
@@ -3972,7 +3596,6 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
         Button(
             onClick = {
                 saveApiKey(context, apiKeyInput)
-                saveGeminiApiKey(context, geminiKeyInput)
                 saveTheOddsApiKey(context, theOddsKeyInput)
                 Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
                 navController.popBackStack()
