@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -46,11 +47,9 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import androidx.work.WorkerParameters
 import coil.compose.AsyncImage
 import com.google.gson.Gson
 import com.google.gson.JsonParser
@@ -61,6 +60,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.Query
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -275,6 +279,83 @@ fun saveTheOddsApiKey(context: Context, key: String) {
 fun getTheOddsApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+}
+
+// Highlightly API kulcskezelés SharedPreferences-en keresztül
+fun saveHighlightlyApiKey(context: Context, key: String) {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val cleanKey = key.trim().replace("\"", "").replace("'", "")
+    prefs.edit().putString("highlightly_api_key", cleanKey).apply()
+}
+
+fun getHighlightlyApiKey(context: Context): String {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    return prefs.getString("highlightly_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+}
+
+// Highlightly API Modellek és Service
+data class HighlightResponse(
+    val data: List<HighlightItem>,
+    val pagination: Pagination
+)
+
+data class HighlightItem(
+    val id: Int,
+    val type: String,
+    val imgUrl: String?,
+    val title: String,
+    val url: String?,
+    val embedUrl: String?,
+    val category: String,
+    val match: HighlightMatch
+)
+
+data class HighlightMatch(
+    val id: Long,
+    val round: String,
+    val date: String,
+    val homeTeam: TeamInfo,
+    val awayTeam: TeamInfo,
+    val league: LeagueInfo
+)
+
+data class TeamInfo(
+    val id: Int,
+    val name: String,
+    val logo: String?
+)
+
+data class LeagueInfo(
+    val id: Int,
+    val name: String,
+    val logo: String?
+)
+
+data class Pagination(
+    val totalCount: Int,
+    val offset: Int,
+    val limit: Int
+)
+
+interface HighlightlyService {
+    @GET("highlights")
+    suspend fun getHighlights(
+        @Header("x-rapidapi-key") apiKey: String,
+        @Header("x-rapidapi-host") apiHost: String = "football-highlights-api.p.rapidapi.com",
+        @Query("team") teamName: String? = null
+    ): HighlightResponse
+
+    companion object {
+        private const val BASE_URL = "https://football-highlights-api.p.rapidapi.com/"
+        
+        fun create(): HighlightlyService {
+            return Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(HighlightlyService::class.java)
+        }
+    }
 }
 
 fun getTheOddsApiSportKey(leagueName: String?): String {
@@ -935,8 +1016,6 @@ fun sendSystemNotification(context: Context, title: String, message: String) {
 
     notificationManager.notify(System.currentTimeMillis().toInt(), notification)
 }
-
-
 
 var selectedMatchGlobal: StatPalMatch? = null
 var selectedLeagueIdGlobal: String? = null
@@ -2458,7 +2537,8 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ODDSOK", "TABELLA", "STATISZTIKA", "ESEMÉNYEK", "AI TIPP", "H2H", "HIÁNYZÓK", "KEZDŐK")
+    // Kibővítve a "VIDEÓK" füllel
+    val tabs = listOf("ODDSOK", "TABELLA", "STATISZTIKA", "ESEMÉNYEK", "AI TIPP", "H2H", "HIÁNYZÓK", "KEZDŐK", "VIDEÓK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
     var homeFormStr by remember { mutableStateOf("") }
@@ -2475,6 +2555,10 @@ fun MatchDetailScreen(
 
     var prematchOddsMatch by remember { mutableStateOf<PrematchOddsMatch?>(null) }
     var isLoadingOdds by remember { mutableStateOf(false) }
+
+    // Highlightly videók állapota
+    var highlights by remember { mutableStateOf<List<HighlightItem>>(emptyList()) }
+    var isLoadingHighlights by remember { mutableStateOf(false) }
 
     val homeG = match.home?.goals?.trim()
     val awayG = match.away?.goals?.trim()
@@ -2512,10 +2596,9 @@ fun MatchDetailScreen(
         val apiKey = getApiKey(context)
         val matchId = match.mainId ?: ""
 
-        if (apiKey.isBlank()) return@LaunchedEffect
-
         when (tabs.getOrNull(selectedTab)) {
             "ODDSOK" -> {
+                if (apiKey.isBlank()) return@LaunchedEffect
                 val lId = leagueId ?: ""
                 val cacheKey = "odds_${lId}_${matchId}"
                 val cached: PrematchOddsMatch? = ApiCacheManager.get(cacheKey)
@@ -2546,6 +2629,7 @@ fun MatchDetailScreen(
                 }
             }
             "HIÁNYZÓK" -> {
+                if (apiKey.isBlank()) return@LaunchedEffect
                 val cacheKey = "injuries_${matchId}"
                 val cached: InjuryMatch? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2568,6 +2652,7 @@ fun MatchDetailScreen(
                 }
             }
             "KEZDŐK" -> {
+                if (apiKey.isBlank()) return@LaunchedEffect
                 val cacheKey = "lineup_${matchId}"
                 val cached: StatPalLineupResponse? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2586,6 +2671,7 @@ fun MatchDetailScreen(
                 }
             }
             "AI TIPP" -> {
+                if (apiKey.isBlank()) return@LaunchedEffect
                 val cacheKey = "prediction_${matchId}"
                 val cached: PredictionData? = ApiCacheManager.get(cacheKey)
                 if (cached != null) {
@@ -2599,6 +2685,26 @@ fun MatchDetailScreen(
                             response.prediction?.let { ApiCacheManager.put(cacheKey, it) }
                         } catch (_: Exception) {} finally {
                             isLoadingPrediction = false
+                        }
+                    }
+                }
+            }
+            "VIDEÓK" -> {
+                val highlightApiKey = getHighlightlyApiKey(context)
+                if (highlightApiKey.isNotBlank() && highlights.isEmpty()) {
+                    isLoadingHighlights = true
+                    coroutineScope.launch {
+                        try {
+                            val service = HighlightlyService.create()
+                            val response = service.getHighlights(highlightApiKey, teamName = match.home?.name)
+                            highlights = response.data.filter { 
+                                it.match.homeTeam.name.equals(match.home?.name, ignoreCase = true) ||
+                                it.match.awayTeam.name.equals(match.away?.name, ignoreCase = true)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        } finally {
+                            isLoadingHighlights = false
                         }
                     }
                 }
@@ -2875,6 +2981,81 @@ fun MatchDetailScreen(
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         item { LineupSection(lineupData?.home, colors) }
                         item { LineupSection(lineupData?.away, colors) }
+                    }
+                }
+            }
+            "VIDEÓK" -> {
+                val highlightApiKey = getHighlightlyApiKey(context)
+                if (highlightApiKey.isBlank()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("🎥 VIDEÓS ÖSSZEFOGLALÓK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("A videók megtekintéséhez kérlek add meg a Highlightly API kulcsodat a Beállításokban (⚙️)!", color = colors.textPrimary, fontSize = 13.sp)
+                        }
+                    }
+                } else if (isLoadingHighlights) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = colors.accentPrimary)
+                    }
+                } else if (highlights.isEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("🎥 VIDEÓS ÖSSZEFOGLALÓK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Ehhez a mérkőzéshez még nincsenek elérhető videós összefoglalók.", color = colors.textPrimary, fontSize = 13.sp)
+                        }
+                    }
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(highlights) { item ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        if (!item.url.isNullOrBlank()) {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
+                                            context.startActivity(intent)
+                                        }
+                                    }
+                            ) {
+                                Column {
+                                    if (!item.imgUrl.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = item.imgUrl,
+                                            contentDescription = item.title,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(160.dp),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = item.title,
+                                            color = colors.textPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (item.category == "goal-clip") "⚽ Gól / Videóklip" else "🎥 Mérkőzés összefoglaló",
+                                            color = colors.accentPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -3925,6 +4106,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentC
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
     var theOddsKeyInput by remember { mutableStateOf(getTheOddsApiKey(context)) }
+    var highlightlyKeyInput by remember { mutableStateOf(getHighlightlyApiKey(context)) }
 
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     var selectedAccentIndex by remember { mutableStateOf(prefs.getInt("accent_color_index", 0)) }
@@ -4046,6 +4228,30 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentC
             modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "🎥 Highlightly API Kulcs (Videós összefoglalók)",
+            color = colors.accentPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = highlightlyKeyInput,
+            onValueChange = { highlightlyKeyInput = it },
+            label = { Text("Highlightly API Key", color = colors.textMuted) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.accentPrimary,
+                unfocusedBorderColor = colors.border,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
@@ -4139,6 +4345,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentC
             onClick = {
                 saveApiKey(context, apiKeyInput)
                 saveTheOddsApiKey(context, theOddsKeyInput)
+                saveHighlightlyApiKey(context, highlightlyKeyInput)
                 Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
                 navController.popBackStack()
             },
