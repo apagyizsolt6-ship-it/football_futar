@@ -46,9 +46,11 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import coil.compose.AsyncImage
 import com.google.gson.Gson
 import com.google.gson.JsonParser
@@ -76,27 +78,45 @@ data class AppColors(
     val border: Color
 )
 
-val DarkColors = AppColors(
-    background = Color(0xFF101214),
-    cardBackground = Color(0xFF1A1D21),
-    accentPrimary = Color(0xFF00FF66),
-    accentRed = Color(0xFFFF3366),
-    accentYellow = Color(0xFFFFCC00),
-    textPrimary = Color(0xFFFFFFFF),
-    textMuted = Color(0xFF8C96A0),
-    border = Color(0xFF2A2E33)
-)
+fun getAccentColor(context: Context, isDark: Boolean): Color {
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    val index = prefs.getInt("accent_color_index", 0)
+    return when (index) {
+        0 -> if (isDark) Color(0xFF00FF66) else Color(0xFF0284C7) // Alap zöld / kék
+        1 -> Color(0xFFFFD700) // Prémium arany
+        2 -> Color(0xFF0284C7) // Sportos kék
+        3 -> Color(0xFF8B5CF6) // Királyi lila
+        4 -> Color(0xFFFF3366) // Élénk rózsaszín/piros
+        else -> if (isDark) Color(0xFF00FF66) else Color(0xFF0284C7)
+    }
+}
 
-val LightColors = AppColors(
-    background = Color(0xFFF1F5F9),
-    cardBackground = Color(0xFFFFFFFF),
-    accentPrimary = Color(0xFF0284C7),
-    accentRed = Color(0xFFE11D48),
-    accentYellow = Color(0xFFD97706),
-    textPrimary = Color(0xFF0F172A),
-    textMuted = Color(0xFF64748B),
-    border = Color(0xFFE2E8F0)
-)
+fun getAppColors(context: Context, isDark: Boolean): AppColors {
+    val customAccent = getAccentColor(context, isDark)
+    return if (isDark) {
+        AppColors(
+            background = Color(0xFF101214),
+            cardBackground = Color(0xFF1A1D21),
+            accentPrimary = customAccent,
+            accentRed = Color(0xFFFF3366),
+            accentYellow = Color(0xFFFFCC00),
+            textPrimary = Color(0xFFFFFFFF),
+            textMuted = Color(0xFF8C96A0),
+            border = Color(0xFF2A2E33)
+        )
+    } else {
+        AppColors(
+            background = Color(0xFFF1F5F9),
+            cardBackground = Color(0xFFFFFFFF),
+            accentPrimary = customAccent,
+            accentRed = Color(0xFFE11D48),
+            accentYellow = Color(0xFFD97706),
+            textPrimary = Color(0xFF0F172A),
+            textMuted = Color(0xFF64748B),
+            border = Color(0xFFE2E8F0)
+        )
+    }
+}
 
 data class BetSlipItem(
     val matchId: String,
@@ -916,6 +936,62 @@ fun sendSystemNotification(context: Context, title: String, message: String) {
     notificationManager.notify(System.currentTimeMillis().toInt(), notification)
 }
 
+class GoalCheckWorker(appContext: Context, workerParams: WorkerParameters) : CoroutineWorker(appContext, workerParams) {
+    override suspend fun doWork(): Result {
+        val context = applicationContext
+        val apiKey = getApiKey(context)
+        if (apiKey.isBlank()) return Result.success()
+
+        try {
+            val response = StatPalClient.service.getDailyMatches(apiKey, 0)
+            val leagues = response.liveMatches?.league.orEmpty()
+            val favoriteIds = getFavoriteMatchIds(context)
+            val notifGoals = getNotificationPref(context, "notif_goals", true)
+
+            leagues.flatMap { it.match }.forEach { match ->
+                val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
+                val isFav = favoriteIds.contains(id)
+
+                // 3. opció: Kezdési értesítés (15 perccel előtte)
+                if (isFav && isUpcomingMatch(match)) {
+                    val dateStr = match.date ?: ""
+                    val timeStr = match.time ?: match.status ?: ""
+                    if (timeStr.contains(":")) {
+                        try {
+                            val utcFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).apply {
+                                timeZone = TimeZone.getTimeZone("UTC")
+                            }
+                            val parsedDate = utcFormat.parse("${if (dateStr.isNotBlank()) dateStr else "01.01.2026"} $timeStr")
+                            if (parsedDate != null) {
+                                val diffMs = parsedDate.time - System.currentTimeMillis()
+                                val diffMins = diffMs / (1000 * 60)
+                                if (diffMins in 0..16) {
+                                    val eventKey = "start_notif_$id"
+                                    if (!isEventAlreadyProcessed(context, eventKey)) {
+                                        sendSystemNotification(context, "Mérkőzés Emlékeztető ⚽", "15 perc múlva kezdődik: ${match.home?.name} vs ${match.away?.name}")
+                                        markEventAsProcessed(context, eventKey)
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                // Élő gól értesítések
+                if (isFav && isLiveMatch(match) && notifGoals) {
+                    val scoreStr = "${match.home?.goals ?: "0"}-${match.away?.goals ?: "0"}"
+                    val eventKey = "goal_$id_$scoreStr"
+                    if (!isEventAlreadyProcessed(context, eventKey)) {
+                        sendSystemNotification(context, "GÓL! ⚽", "${match.home?.name} ${match.home?.goals} - ${match.away?.goals} ${match.away?.name}")
+                        markEventAsProcessed(context, eventKey)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return Result.success()
+    }
+}
+
 var selectedMatchGlobal: StatPalMatch? = null
 var selectedLeagueIdGlobal: String? = null
 
@@ -947,7 +1023,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             var isDarkMode by remember { mutableStateOf(isDarkModeSaved(context)) }
-            val colors = if (isDarkMode) DarkColors else LightColors
+            var colors by remember { mutableStateOf(getAppColors(context, isDarkMode)) }
 
             var betSlipItems by BetSlipManager.currentItems
 
@@ -964,11 +1040,14 @@ class MainActivity : ComponentActivity() {
                                 onToggleDarkMode = { newMode ->
                                     isDarkMode = newMode
                                     saveDarkMode(context, newMode)
+                                    colors = getAppColors(context, newMode)
                                 }
                             )
                         }
                         composable("api_settings") {
-                            ApiSettingsScreen(navController, colors)
+                            ApiSettingsScreen(navController, colors) {
+                                colors = getAppColors(context, isDarkMode)
+                            }
                         }
                         composable("saved_bets") {
                             SavedBetsScreen(navController, colors)
@@ -2433,12 +2512,9 @@ fun MatchDetailScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableStateOf(0) }
-    // Sorrend: ODDSOK, TABELLA, STATISZTIKA, ESEMÉNYEK + háttérinfók
     val tabs = listOf("ODDSOK", "TABELLA", "STATISZTIKA", "ESEMÉNYEK", "AI TIPP", "H2H", "HIÁNYZÓK", "KEZDŐK")
 
     var h2hMatches by remember { mutableStateOf<List<H2HMatch>>(emptyList()) }
-    var isLoadingH2H by remember { mutableStateOf(false) }
-
     var homeFormStr by remember { mutableStateOf("") }
     var awayFormStr by remember { mutableStateOf("") }
 
@@ -2739,6 +2815,39 @@ fun MatchDetailScreen(
             }
             "H2H" -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (h2hMatches.isNotEmpty()) {
+                        // 1. opció: Trend számítás az utolsó találkozókból
+                        val totalCount = h2hMatches.size
+                        val over25Count = h2hMatches.count { m ->
+                            val s1 = m.team1Score?.toIntOrNull() ?: 0
+                            val s2 = m.team2Score?.toIntOrNull() ?: 0
+                            (s1 + s2) > 2
+                        }
+                        val btsCount = h2hMatches.count { m ->
+                            val s1 = m.team1Score?.toIntOrNull() ?: 0
+                            val s2 = m.team2Score?.toIntOrNull() ?: 0
+                            s1 > 0 && s2 > 0
+                        }
+                        val over25Percent = (over25Count * 100) / totalCount
+                        val btsPercent = (btsCount * 100) / totalCount
+
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                modifier = Modifier.fillMaxWidth().border(1.dp, colors.accentYellow.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("📊 GÓLSTATISZTIKAI TRENDEK ($totalCount MECCS)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Over 2.5 gól arány: $over25Percent%", color = colors.textPrimary, fontSize = 12.sp)
+                                        Text("BTS (Mindkét gól): $btsPercent%", color = colors.textPrimary, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (h2hMatches.isEmpty()) {
                         item {
                             Card(
@@ -2830,8 +2939,6 @@ fun MatchDetailScreen(
 
 @Composable
 fun MatchStatsTab(match: StatPalMatch, colors: AppColors) {
-    // Valós statisztika ellenőrzés (ha az API adna hozzá adatot)
-    // Ha nincsenek adatok (pl. alacsonyabb osztályú meccseknél), kulturált üzenetet írunk ki a hamis adatok helyett.
     val hasRealStats = false 
 
     Card(
@@ -2844,14 +2951,6 @@ fun MatchStatsTab(match: StatPalMatch, colors: AppColors) {
 
             if (hasRealStats) {
                 StatBarRow(label = "Labdabirtoklás", homeVal = "52%", awayVal = "48%", homeProgress = 0.52f, colors = colors)
-                Spacer(modifier = Modifier.height(12.dp))
-                StatBarRow(label = "Kapura lövések", homeVal = "12", awayVal = "9", homeProgress = 0.57f, colors = colors)
-                Spacer(modifier = Modifier.height(12.dp))
-                StatBarRow(label = "Kaput eltaláló lövés", homeVal = "5", awayVal = "4", homeProgress = 0.55f, colors = colors)
-                Spacer(modifier = Modifier.height(12.dp))
-                StatBarRow(label = "Szögletek", homeVal = "6", awayVal = "3", homeProgress = 0.66f, colors = colors)
-                Spacer(modifier = Modifier.height(12.dp))
-                StatBarRow(label = "Szabálytalanságok", homeVal = "11", awayVal = "14", homeProgress = 0.44f, colors = colors)
             } else {
                 Box(
                     modifier = Modifier
@@ -3877,10 +3976,13 @@ fun PlayerInjuryRow(name: String, status: String, isQuestionable: Boolean, color
 }
 
 @Composable
-fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
+fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentChanged: () -> Unit) {
     val context = LocalContext.current
     var apiKeyInput by remember { mutableStateOf(getApiKey(context)) }
     var theOddsKeyInput by remember { mutableStateOf(getTheOddsApiKey(context)) }
+
+    val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    var selectedAccentIndex by remember { mutableStateOf(prefs.getInt("accent_color_index", 0)) }
 
     var goalsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_goals", true)) }
     var yellowCardsNotif by remember { mutableStateOf(getNotificationPref(context, "notif_yellow_cards", true)) }
@@ -3908,6 +4010,49 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 4. opció: Akcentus szín választó
+        Text(
+            text = "🎨 Kiemelő (Accent) Szín",
+            color = colors.accentPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            val colorOptions = listOf(
+                Pair("Neon", Color(0xFF00FF66)),
+                Pair("Arany", Color(0xFFFFD700)),
+                Pair("Kék", Color(0xFF0284C7)),
+                Pair("Lila", Color(0xFF8B5CF6)),
+                Pair("Rózsaszín", Color(0xFFFF3366))
+            )
+            colorOptions.forEachIndexed { index, pair ->
+                val isSelected = selectedAccentIndex == index
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(pair.second)
+                        .border(if (isSelected) 3.dp else 1.dp, if (isSelected) Color.White else colors.border, CircleShape)
+                        .clickable {
+                            selectedAccentIndex = index
+                            prefs.edit().putInt("accent_color_index", index).apply()
+                            onAccentChanged()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Text("✓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -3977,7 +4122,7 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("⚽ Gól értesítések", color = colors.textPrimary, fontSize = 13.sp)
+                    Text("⚽ Gól & Kezdési értesítések", color = colors.textPrimary, fontSize = 13.sp)
                     Switch(
                         checked = goalsNotif,
                         onCheckedChange = {
