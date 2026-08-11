@@ -7,14 +7,12 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -117,6 +115,10 @@ data class SavedBet(
     var status: String = "FÜGGŐBEN",
     var isPaidOut: Boolean = false
 )
+
+object BetSlipManager {
+    var currentItems = mutableStateOf<List<BetSlipItem>>(emptyList())
+}
 
 data class FlatMatchItem(
     val match: StatPalMatch,
@@ -241,7 +243,7 @@ fun saveApiKey(context: Context, key: String) {
 
 fun getApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("statpal_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun saveTheOddsApiKey(context: Context, key: String) {
@@ -252,7 +254,7 @@ fun saveTheOddsApiKey(context: Context, key: String) {
 
 fun getTheOddsApiKey(context: Context): String {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "")?.replace("'", "") ?: ""
+    return prefs.getString("the_odds_api_key", "")?.trim()?.replace("\"", "").replace("'", "") ?: ""
 }
 
 fun getTheOddsApiSportKey(leagueName: String?): String {
@@ -603,16 +605,12 @@ fun isLiveMatch(match: StatPalMatch): Boolean {
     }
 
     if (rawStatus.contains("'") || rawStatus == "1H" || rawStatus == "2H" || 
-        rawStatus == "HT" || rawStatus == "LIVE" || rawStatus == "INPLAY" ||
+        rawStatus == "HT" || rawStatus == "FÉLIDŐ" || rawStatus == "LIVE" || rawStatus == "INPLAY" ||
         match.status?.toIntOrNull() != null) {
         return true
     }
 
-    if (rawStatus.contains(":") && !rawStatus.contains("'")) {
-        return false
-    }
-
-    return true
+    return false
 }
 
 fun getMatchTimestamp(match: StatPalMatch): Long {
@@ -841,7 +839,7 @@ fun generateFuturAiAnalysis(match: StatPalMatch): Pair<String, String> {
             else -> {
                 Pair(
                     "⚔️ Kiélezett döntetlen állás",
-                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem now kulcsfontosságú."
+                    "A csapatok játék képe kiegyenlített. A következő gól mindent eldönthet, a taktikai fegyelem kulcsfontosságú."
                 )
             }
         }
@@ -934,7 +932,7 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(isDarkModeSaved(context)) }
             val colors = if (isDarkMode) DarkColors else LightColors
 
-            var betSlipItems by remember { mutableStateOf<List<BetSlipItem>>(emptyList()) }
+            var betSlipItems by BetSlipManager.currentItems
 
             MaterialTheme {
                 val navController = rememberNavController()
@@ -1076,7 +1074,7 @@ fun MatchesListScreen(
 
         if (!forceRefresh) {
             val cached: List<StatPalLeague>? = ApiCacheManager.get(cacheKey)
-            if (cached != null) {
+            if (cached != null && cached.isNotEmpty()) {
                 leagues = cached
                 errorMessage = null
                 isLoading = false
@@ -1113,18 +1111,25 @@ fun MatchesListScreen(
 
                     if (isFav) {
                         if (previousScoresMap.containsKey(id) && isLiveMatch(m) && goalsEnabled) {
-                            val oldScore = previousScoresMap[id]
-                            if (oldScore != null && oldScore != scoreStr) {
-                                val goalEventKey = "goal_${id}_${scoreStr}"
-                                if (!isEventAlreadyProcessed(context, goalEventKey)) {
-                                    markEventAsProcessed(context, goalEventKey)
-                                    Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
-                                    sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
-                                    
-                                    coroutineScope.launch {
-                                        flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
-                                        delay(15000L)
-                                        flashingMatchesState = flashingMatchesState - id
+                            val oldScore = previousScoresMap[id] ?: "0-0"
+                            if (oldScore != scoreStr && oldScore != "null-null" && oldScore != "?-?") {
+                                val oldParts = oldScore.split("-")
+                                val newParts = scoreStr.split("-")
+                                val oldTotal = (oldParts.getOrNull(0)?.toIntOrNull() ?: 0) + (oldParts.getOrNull(1)?.toIntOrNull() ?: 0)
+                                val newTotal = (newParts.getOrNull(0)?.toIntOrNull() ?: 0) + (newParts.getOrNull(1)?.toIntOrNull() ?: 0)
+
+                                if (newTotal > oldTotal) {
+                                    val goalEventKey = "goal_${id}_${scoreStr}"
+                                    if (!isEventAlreadyProcessed(context, goalEventKey)) {
+                                        markEventAsProcessed(context, goalEventKey)
+                                        Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
+                                        sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
+                                        
+                                        coroutineScope.launch {
+                                            flashingMatchesState = flashingMatchesState + (id to colors.accentPrimary)
+                                            delay(15000L)
+                                            flashingMatchesState = flashingMatchesState - id
+                                        }
                                     }
                                 }
                             }
@@ -1176,15 +1181,18 @@ fun MatchesListScreen(
                 finishedMatchesMap = newlyFinished
                 halftimeMatchesMap = newlyHt
 
-                leagues = validLeagues
                 if (validLeagues.isNotEmpty()) {
+                    leagues = validLeagues
                     ApiCacheManager.put(cacheKey, validLeagues)
-                } else {
+                    errorMessage = null
+                } else if (leagues.isEmpty()) {
                     errorMessage = "Ezen a napon (${formatDateForDisplay(selectedCalendar)}) nincsenek mérkőzések."
                 }
             } catch (e: Exception) {
-                val errDetails = if (e is HttpException) "HTTP ${e.code()} (${e.message()})" else e.localizedMessage ?: "Ismeretlen hiba"
-                errorMessage = "API Hiba: $errDetails\nOffset: $offset"
+                if (leagues.isEmpty()) {
+                    val errDetails = if (e is HttpException) "HTTP ${e.code()} (${e.message()})" else e.localizedMessage ?: "Ismeretlen hiba"
+                    errorMessage = "API Hiba: $errDetails\nOffset: $offset"
+                }
             } finally {
                 isLoading = false
             }
@@ -1761,19 +1769,27 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                         break
                     }
 
-                    val hG = match.home?.goals?.toIntOrNull() ?: 0
-                    val aG = match.away?.goals?.toIntOrNull() ?: 0
+                    val hG = match.home?.goals?.toIntOrNull()
+                    val aG = match.away?.goals?.toIntOrNull()
+
+                    if (hG == null || aG == null) {
+                        allFinished = false
+                        break
+                    }
 
                     val choice = item.choiceName
                     val isChoiceWon = when {
-                        choice.contains("1") && hG > aG -> true
-                        choice.contains("X") && hG == aG -> true
-                        choice.contains("2") && aG > hG -> true
-                        choice.contains("Gól-gól (Igen)") && hG > 0 && aG > 0 -> true
+                        choice.contains("1") && !choice.contains("1X") && !choice.contains("12") && !choice.contains("DNB") && hG > aG -> true
+                        choice.contains("X") && !choice.contains("1X") && !choice.contains("X2") && hG == aG -> true
+                        choice.contains("2") && !choice.contains("X2") && !choice.contains("12") && !choice.contains("DNB") && aG > hG -> true
+                        choice.contains("1X") && (hG > aG || hG == aG) -> true
+                        choice.contains("12") && hG != aG -> true
+                        choice.contains("X2") && (aG > hG || hG == aG) -> true
+                        choice.contains("Gól-gól (Igen)") && !choice.contains("GG + Over") && hG > 0 && aG > 0 -> true
                         choice.contains("Gól-gól (Nem)") && !(hG > 0 && aG > 0) -> true
-                        choice.contains("Over 2.5") && (hG + aG) > 2 -> true
+                        choice.contains("Over 2.5") && !choice.contains("GG + Over") && (hG + aG) > 2 -> true
                         choice.contains("Under 2.5") && (hG + aG) < 3 -> true
-                        choice.contains("GG + Over 2.5") && hG > 0 && aG > 0 && (hG + aG) > 2 -> true
+                        choice.contains("GG + Over 2.5") && (hG > 0 && aG > 0 && (hG + aG) > 2) -> true
                         else -> false
                     }
 
@@ -1893,6 +1909,27 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                             ) {
                                 Text(bet.dateStr, color = colors.textMuted, fontSize = 10.sp)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (bet.status == "FÜGGŐBEN") {
+                                        Text(
+                                            text = "✏️",
+                                            fontSize = 13.sp,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    val currentBal = getVirtualBalance(context)
+                                                    updateVirtualBalance(context, currentBal + bet.stake)
+                                                    balance = getVirtualBalance(context)
+
+                                                    val updated = savedBets.filter { it.id != bet.id }
+                                                    updateSavedBetsStorage(context, updated)
+                                                    savedBets = updated
+
+                                                    BetSlipManager.currentItems.value = bet.items
+                                                    Toast.makeText(context, "Szelvény betöltve szerkesztésre! Módosítsd és mentsd újra. 🎟️", Toast.LENGTH_LONG).show()
+                                                    navController.popBackStack()
+                                                }
+                                                .padding(end = 8.dp)
+                                        )
+                                    }
                                     Text(
                                         text = bet.status,
                                         color = when (bet.status) {
