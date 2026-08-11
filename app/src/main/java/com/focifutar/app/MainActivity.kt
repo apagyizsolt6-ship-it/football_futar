@@ -1115,7 +1115,8 @@ fun MatchesListScreen(
     
     var selectedTimeFilterHours by remember { mutableStateOf<Int?>(null) }
     var isFeaturedDismissed by remember { mutableStateOf(false) }
-
+    var isFavoriteTeamFilter by remember { mutableStateOf(false) }
+    var favoriteTeams by remember { mutableStateOf(getFavoriteTeams(context)) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var favoriteIds by remember { mutableStateOf(getFavoriteMatchIds(context)) }
