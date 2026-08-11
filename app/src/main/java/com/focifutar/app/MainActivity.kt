@@ -1106,13 +1106,22 @@ fun MatchesListScreen(
 
                     val isFav = favoriteIds.contains(id)
                     val rawStatus = (m.status ?: m.time ?: "").uppercase()
+                    val isLiveNow = isLiveMatch(m)
                     val isFinishedNow = rawStatus == "FT" || rawStatus == "FINISHED" || rawStatus == "VÉGE" || rawStatus == "ENDED"
                     val isHtNow = rawStatus.contains("HT") || rawStatus.contains("FÉLIDŐ")
 
                     if (isFav) {
-                        if (previousScoresMap.containsKey(id) && isLiveMatch(m) && goalsEnabled) {
+                        // 1. Mérkőzés kezdete értesítés (duplikáció szűrve)
+                        val matchStartedKey = "match_started_$id"
+                        if (isLiveNow && !isEventAlreadyProcessed(context, matchStartedKey) && statusEnabled) {
+                            markEventAsProcessed(context, matchStartedKey)
+                            sendSystemNotification(context, "⚽ Mérkőzés Kezdete", "${m.home?.name} - ${m.away?.name} elkezdődött!")
+                        }
+
+                        // 2. Gól értesítések (0-0 indulás szűrve, duplikáció ellen védve)
+                        if (previousScoresMap.containsKey(id) && isLiveNow && goalsEnabled) {
                             val oldScore = previousScoresMap[id] ?: "0-0"
-                            if (oldScore != scoreStr && oldScore != "null-null" && oldScore != "?-?") {
+                            if (oldScore != scoreStr && oldScore != "null-null" && oldScore != "?-?" && oldScore != "0-0") {
                                 val oldParts = oldScore.split("-")
                                 val newParts = scoreStr.split("-")
                                 val oldTotal = (oldParts.getOrNull(0)?.toIntOrNull() ?: 0) + (oldParts.getOrNull(1)?.toIntOrNull() ?: 0)
@@ -1122,7 +1131,6 @@ fun MatchesListScreen(
                                     val goalEventKey = "goal_${id}_${scoreStr}"
                                     if (!isEventAlreadyProcessed(context, goalEventKey)) {
                                         markEventAsProcessed(context, goalEventKey)
-                                        Toast.makeText(context, "⚽ KEDVENC GÓL! ${m.home?.name} $scoreStr ${m.away?.name}", Toast.LENGTH_LONG).show()
                                         sendSystemNotification(context, "⚽ Élő Gól Értesítés", "${m.home?.name} $scoreStr ${m.away?.name}")
                                         
                                         coroutineScope.launch {
@@ -1135,13 +1143,15 @@ fun MatchesListScreen(
                             }
                         }
 
+                        // 3. Félidő értesítés
                         val htEventKey = "ht_${id}"
-                        if (isHtNow && !newlyHt.contains(id) && !isEventAlreadyProcessed(context, htEventKey) && statusEnabled) {
+                        if (isHtNow && !isEventAlreadyProcessed(context, htEventKey) && statusEnabled) {
                             markEventAsProcessed(context, htEventKey)
                             newlyHt.add(id)
                             sendSystemNotification(context, "⏱️ Félidő", "Félidő a mérkőzésen: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
+                        // 4. Mérkőzés vége értesítés
                         val ftEventKey = "ft_${id}"
                         if (isFinishedNow && !newlyFinished.contains(id) && !isEventAlreadyProcessed(context, ftEventKey) && statusEnabled) {
                             markEventAsProcessed(context, ftEventKey)
@@ -1149,6 +1159,7 @@ fun MatchesListScreen(
                             sendSystemNotification(context, "🏁 Mérkőzés Vége", "Vége a meccsnek: ${m.home?.name} $scoreStr ${m.away?.name}")
                         }
 
+                        // 5. Lap események (sárga/piros)
                         val events = m.events?.event.orEmpty()
                         events.forEach { event ->
                             val type = event.type?.lowercase() ?: ""
@@ -1830,9 +1841,9 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                         // Lapok & Szögletek
                         choice.contains("Lapok Over 3.5") && totalCards > 3 -> true
                         choice.contains("Lapok Under 3.5") && totalCards < 4 -> true
-                        choice.contains("Szögletek Over 8.5") && (hG + aG + 7) > 8 -> true // Okos becslés / meccs stat alapú
+                        choice.contains("Szögletek Over 8.5") && (hG + aG + 7) > 8 -> true
 
-                        // Pontos végeredmény (pl. "Pontos eredmény: 2-1")
+                        // Pontos végeredmény
                         choice.contains("Pontos eredmény:") && choice.contains("$hG-$aG") -> true
 
                         // DNB & Handikap
@@ -3234,7 +3245,7 @@ fun OddsTab(
             }
         }
 
-        // 6. 1X2 + Kombók (1+BTS, 1+1.5, 1+2.5)
+        // 6. 1X2 + Kombók
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3262,7 +3273,7 @@ fun OddsTab(
             }
         }
 
-        // 7. Hazai & Vendég csapat gólok (0.5, 1.5, 2.5)
+        // 7. Hazai & Vendég csapat gólok
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3334,7 +3345,7 @@ fun OddsTab(
             }
         }
 
-        // 9. Pontos végeredmény (Gyakoriak)
+        // 9. Pontos végeredmény
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
