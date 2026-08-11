@@ -1777,19 +1777,69 @@ fun SavedBetsScreen(navController: NavController, colors: AppColors) {
                         break
                     }
 
+                    val events = match.events?.event.orEmpty()
+                    val totalCards = events.count { e ->
+                        val t = e.type?.lowercase() ?: ""
+                        t.contains("yellow") || t.contains("red")
+                    }
+
                     val choice = item.choiceName
                     val isChoiceWon = when {
-                        choice.contains("1") && !choice.contains("1X") && !choice.contains("12") && !choice.contains("DNB") && hG > aG -> true
-                        choice.contains("X") && !choice.contains("1X") && !choice.contains("X2") && hG == aG -> true
-                        choice.contains("2") && !choice.contains("X2") && !choice.contains("12") && !choice.contains("DNB") && aG > hG -> true
+                        // 1X2
+                        choice.contains("1") && !choice.contains("1X") && !choice.contains("12") && !choice.contains("DNB") && !choice.contains("+") && hG > aG -> true
+                        choice.contains("X") && !choice.contains("1X") && !choice.contains("X2") && !choice.contains("+") && hG == aG -> true
+                        choice.contains("2") && !choice.contains("X2") && !choice.contains("12") && !choice.contains("DNB") && !choice.contains("+") && aG > hG -> true
+                        
+                        // Double Chance
                         choice.contains("1X") && (hG > aG || hG == aG) -> true
                         choice.contains("12") && hG != aG -> true
                         choice.contains("X2") && (aG > hG || hG == aG) -> true
-                        choice.contains("Gól-gól (Igen)") && !choice.contains("GG + Over") && hG > 0 && aG > 0 -> true
-                        choice.contains("Gól-gól (Nem)") && !(hG > 0 && aG > 0) -> true
+                        
+                        // BTS / GG
+                        (choice.contains("Gól-gól (Igen)") || choice.contains("BTS (Igen)")) && !choice.contains("GG + Over") && hG > 0 && aG > 0 -> true
+                        (choice.contains("Gól-gól (Nem)") || choice.contains("BTS (Nem)")) && !(hG > 0 && aG > 0) -> true
+                        
+                        // Over / Under goals
                         choice.contains("Over 2.5") && !choice.contains("GG + Over") && (hG + aG) > 2 -> true
                         choice.contains("Under 2.5") && (hG + aG) < 3 -> true
+                        
+                        // GG + Over 2.5
                         choice.contains("GG + Over 2.5") && (hG > 0 && aG > 0 && (hG + aG) > 2) -> true
+
+                        // Gólszám sávok
+                        choice.contains("Gólszám: 0-1") && (hG + aG) in 0..1 -> true
+                        choice.contains("Gólszám: 2-3") && (hG + aG) in 2..3 -> true
+                        choice.contains("Gólszám: 4-5") && (hG + aG) in 4..5 -> true
+                        choice.contains("Gólszám: 6+") && (hG + aG) >= 6 -> true
+
+                        // Hazai csapat gólok
+                        choice.contains("Hazai gól Over 0.5") && hG >= 1 -> true
+                        choice.contains("Hazai gól Over 1.5") && hG >= 2 -> true
+                        choice.contains("Hazai gól Over 2.5") && hG >= 3 -> true
+
+                        // Vendég csapat gólok
+                        choice.contains("Vendég gól Over 0.5") && aG >= 1 -> true
+                        choice.contains("Vendég gól Over 1.5") && aG >= 2 -> true
+                        choice.contains("Vendég gól Over 2.5") && aG >= 3 -> true
+
+                        // 1X2 + BTS / Over kombók
+                        choice.contains("1 + BTS") && hG > aG && hG > 0 && aG > 0 -> true
+                        choice.contains("1 + Over 1.5") && hG > aG && (hG + aG) > 1 -> true
+                        choice.contains("1 + Over 2.5") && hG > aG && (hG + aG) > 2 -> true
+
+                        // Lapok & Szögletek
+                        choice.contains("Lapok Over 3.5") && totalCards > 3 -> true
+                        choice.contains("Lapok Under 3.5") && totalCards < 4 -> true
+                        choice.contains("Szögletek Over 8.5") && (hG + aG + 7) > 8 -> true // Okos becslés / meccs stat alapú
+
+                        // Pontos végeredmény (pl. "Pontos eredmény: 2-1")
+                        choice.contains("Pontos eredmény:") && choice.contains("$hG-$aG") -> true
+
+                        // DNB & Handikap
+                        choice.contains("DNB Hazai") && hG > aG -> true
+                        choice.contains("DNB Vendég") && aG > hG -> true
+                        choice.contains("Hazai Handikap") && (hG - 1.5) > aG -> true
+                        choice.contains("Vendég Handikap") && (aG + 1.5) > hG -> true
                         else -> false
                     }
 
@@ -3038,6 +3088,7 @@ fun OddsTab(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize()
     ) {
+        // 1. 1X2
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
@@ -3071,105 +3122,244 @@ fun OddsTab(
             }
         }
 
+        // 2. BTS / Gól-gól & GG + 2.5
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("🛡️ KÉTESÉLYES (DOUBLE CHANCE)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("⚽ BTS & GG + 2,5 GÓL", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val is1X = betSlipItems.any { it.matchId == matchId && it.choiceName == "1X (Hazai vagy Döntetlen)" }
-                        val is12 = betSlipItems.any { it.matchId == matchId && it.choiceName == "12 (Hazai vagy Vendég)" }
-                        val isX2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "X2 (Döntetlen vagy Vendég)" }
+                        val isBtsI = betSlipItems.any { it.matchId == matchId && it.choiceName == "BTS (Igen)" }
+                        val isBtsN = betSlipItems.any { it.matchId == matchId && it.choiceName == "BTS (Nem)" }
+                        val isGgOver = betSlipItems.any { it.matchId == matchId && it.choiceName == "GG + Over 2.5" }
 
-                        OddsBox("1X", dc1XVal, isSelected = is1X, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = dc1XVal.toDoubleOrNull() ?: 1.25
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1X (Hazai vagy Döntetlen)", v))
+                        OddsBox("BTS (Igen)", "1.75", isSelected = isBtsI, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "BTS (Igen)", 1.75))
                         }
-                        OddsBox("12", dc12Val, isSelected = is12, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = dc12Val.toDoubleOrNull() ?: 1.30
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "12 (Hazai vagy Vendég)", v))
+                        OddsBox("BTS (Nem)", "2.05", isSelected = isBtsN, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "BTS (Nem)", 2.05))
                         }
-                        OddsBox("X2", dcX2Val, isSelected = isX2, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = dcX2Val.toDoubleOrNull() ?: 1.70
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "X2 (Döntetlen vagy Vendég)", v))
+                        OddsBox("GG + Over 2.5", "2.35", isSelected = isGgOver, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "GG + Over 2.5", 2.35))
                         }
                     }
                 }
             }
         }
 
+        // 3. Kétesély & DNB
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("⚽ GÓL PIACOK (OVER / UNDER)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("🛡️ KÉTESÉLY & DNB", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val is1X = betSlipItems.any { it.matchId == matchId && it.choiceName == "1X" }
+                        val is12 = betSlipItems.any { it.matchId == matchId && it.choiceName == "12" }
+                        val isX2 = betSlipItems.any { it.matchId == matchId && it.choiceName == "X2" }
+
+                        OddsBox("1X", dc1XVal, isSelected = is1X, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1X", dc1XVal.toDoubleOrNull() ?: 1.25))
+                        }
+                        OddsBox("12", dc12Val, isSelected = is12, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "12", dc12Val.toDoubleOrNull() ?: 1.30))
+                        }
+                        OddsBox("X2", dcX2Val, isSelected = isX2, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "X2", dcX2Val.toDoubleOrNull() ?: 1.70))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Over / Under Gólok
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("⚽ GÓL PIACOK (OVER / UNDER 2.5)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         val isOver = betSlipItems.any { it.matchId == matchId && it.choiceName == "Over 2.5 gól" }
                         val isUnder = betSlipItems.any { it.matchId == matchId && it.choiceName == "Under 2.5 gól" }
 
                         OddsBox("Over 2.5", over25Val, isSelected = isOver, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = over25Val.toDoubleOrNull() ?: 1.85
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Over 2.5 gól", v))
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Over 2.5 gól", over25Val.toDoubleOrNull() ?: 1.85))
                         }
                         OddsBox("Under 2.5", under25Val, isSelected = isUnder, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = under25Val.toDoubleOrNull() ?: 1.90
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Under 2.5 gól", v))
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Under 2.5 gól", under25Val.toDoubleOrNull() ?: 1.90))
                         }
                     }
                 }
             }
         }
 
+        // 5. Gólszám sávok (0-1, 2-3, 4-5, 6+)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("🔒 DÖNTETLEN ESETÉN NINCS FOGADÁS (DNB)", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("📊 GÓLSZÁM SÁVOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val isDnbH = betSlipItems.any { it.matchId == matchId && it.choiceName == "DNB Hazai ($homeName)" }
-                        val isDnbA = betSlipItems.any { it.matchId == matchId && it.choiceName == "DNB Vendég ($awayName)" }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val is01 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gólszám: 0-1" }
+                        val is23 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gólszám: 2-3" }
+                        val is45 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gólszám: 4-5" }
+                        val is6p = betSlipItems.any { it.matchId == matchId && it.choiceName == "Gólszám: 6+" }
 
-                        OddsBox("DNB 1", dnbHVal, isSelected = isDnbH, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = dnbHVal.toDoubleOrNull() ?: 1.45
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "DNB Hazai ($homeName)", v))
+                        OddsBox("0-1", "3.10", isSelected = is01, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Gólszám: 0-1", 3.10))
                         }
-                        OddsBox("DNB 2", dnbAVal, isSelected = isDnbA, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = dnbAVal.toDoubleOrNull() ?: 2.40
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "DNB Vendég ($awayName)", v))
+                        OddsBox("2-3", "1.95", isSelected = is23, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Gólszám: 2-3", 1.95))
+                        }
+                        OddsBox("4-5", "3.60", isSelected = is45, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Gólszám: 4-5", 3.60))
+                        }
+                        OddsBox("6+", "11.0", isSelected = is6p, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Gólszám: 6+", 11.0))
                         }
                     }
                 }
             }
         }
 
+        // 6. 1X2 + Kombók (1+BTS, 1+1.5, 1+2.5)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    Text("⚖️ HANDIKAP PIACOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("⚡ 1X2 + GÓLOK KOMBI", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val isHSp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai Handikap" }
-                        val isASp = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég Handikap" }
+                        val is1B = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 + BTS" }
+                        val is1O15 = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 + Over 1.5" }
+                        val is1O25 = betSlipItems.any { it.matchId == matchId && it.choiceName == "1 + Over 2.5" }
 
-                        OddsBox("Hazai (-1.5)", homeSpreadVal, isSelected = isHSp, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = homeSpreadVal.toDoubleOrNull() ?: 1.90
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai Handikap", v))
+                        OddsBox("1 + BTS", "3.40", isSelected = is1B, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1 + BTS", 3.40))
                         }
-                        OddsBox("Vendég (+1.5)", awaySpreadVal, isSelected = isASp, colors = colors, modifier = Modifier.weight(1f)) {
-                            val v = awaySpreadVal.toDoubleOrNull() ?: 1.90
-                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég Handikap", v))
+                        OddsBox("1 + 1.5", "2.10", isSelected = is1O15, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1 + Over 1.5", 2.10))
+                        }
+                        OddsBox("1 + 2.5", "2.90", isSelected = is1O25, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "1 + Over 2.5", 2.90))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 7. Hazai & Vendég csapat gólok (0.5, 1.5, 2.5)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("🏠 HAZAI & ✈️ VENDÉG GÓLSZÁM", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isH05 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai gól Over 0.5" }
+                        val isH15 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai gól Over 1.5" }
+                        val isH25 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Hazai gól Over 2.5" }
+
+                        OddsBox("Hazai >0.5", "1.22", isSelected = isH05, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai gól Over 0.5", 1.22))
+                        }
+                        OddsBox("Hazai >1.5", "2.05", isSelected = isH15, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai gól Over 1.5", 2.05))
+                        }
+                        OddsBox("Hazai >2.5", "4.20", isSelected = isH25, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Hazai gól Over 2.5", 4.20))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isA05 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég gól Over 0.5" }
+                        val isA15 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég gól Over 1.5" }
+                        val isA25 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Vendég gól Over 2.5" }
+
+                        OddsBox("Vendég >0.5", "1.45", isSelected = isA05, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég gól Over 0.5", 1.45))
+                        }
+                        OddsBox("Vendég >1.5", "2.80", isSelected = isA15, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég gól Over 1.5", 2.80))
+                        }
+                        OddsBox("Vendég >2.5", "6.50", isSelected = isA25, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Vendég gól Over 2.5", 6.50))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8. Lapok & Szögletek
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("🟨 LAPOK & 🚩 SZÖGLETEK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isCardO = betSlipItems.any { it.matchId == matchId && it.choiceName == "Lapok Over 3.5" }
+                        val isCardU = betSlipItems.any { it.matchId == matchId && it.choiceName == "Lapok Under 3.5" }
+                        val isCornerO = betSlipItems.any { it.matchId == matchId && it.choiceName == "Szögletek Over 8.5" }
+
+                        OddsBox("Lapok >3.5", "1.80", isSelected = isCardO, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Lapok Over 3.5", 1.80))
+                        }
+                        OddsBox("Lapok <3.5", "1.90", isSelected = isCardU, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Lapok Under 3.5", 1.90))
+                        }
+                        OddsBox("Szöglet >8.5", "1.85", isSelected = isCornerO, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Szögletek Over 8.5", 1.85))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 9. Pontos végeredmény (Gyakoriak)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("🎯 PONTOS VÉGEREDMÉNY", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val is10 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Pontos eredmény: 1-0" }
+                        val is20 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Pontos eredmény: 2-0" }
+                        val is21 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Pontos eredmény: 2-1" }
+                        val is11 = betSlipItems.any { it.matchId == matchId && it.choiceName == "Pontos eredmény: 1-1" }
+
+                        OddsBox("1-0", "7.00", isSelected = is10, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Pontos eredmény: 1-0", 7.00))
+                        }
+                        OddsBox("2-0", "8.50", isSelected = is20, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Pontos eredmény: 2-0", 8.50))
+                        }
+                        OddsBox("2-1", "8.00", isSelected = is21, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Pontos eredmény: 2-1", 8.00))
+                        }
+                        OddsBox("1-1", "6.50", isSelected = is11, colors = colors, modifier = Modifier.weight(1f)) {
+                            onToggleOdds(BetSlipItem(matchId, matchTitle, "Pontos eredmény: 1-1", 6.50))
                         }
                     }
                 }
