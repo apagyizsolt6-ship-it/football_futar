@@ -1,4 +1,4 @@
-package com.focifutar.app
+wwwpackage com.focifutar.app
 
 import android.Manifest
 import android.app.DatePickerDialog
@@ -1459,6 +1459,17 @@ fun MatchesListScreen(
                             .padding(8.dp)
                     ) {
                         Text(text = "🔍", fontSize = 13.sp)
+                    }
+                }                // 6. Kedvenc Csapat Szűrő Chip
+                item {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isFavoriteTeamFilter) colors.accentPrimary else colors.cardBackground)
+                            .clickable { isFavoriteTeamFilter = !isFavoriteTeamFilter }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(text = "⭐ Kedvenc Csapat", color = if (isFavoriteTeamFilter) Color.White else colors.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
