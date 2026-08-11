@@ -82,11 +82,11 @@ fun getAccentColor(context: Context, isDark: Boolean): Color {
     val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     val index = prefs.getInt("accent_color_index", 0)
     return when (index) {
-        0 -> if (isDark) Color(0xFF00FF66) else Color(0xFF0284C7) // Alap zöld / kék
-        1 -> Color(0xFFFFD700) // Prémium arany
-        2 -> Color(0xFF0284C7) // Sportos kék
-        3 -> Color(0xFF8B5CF6) // Királyi lila
-        4 -> Color(0xFFFF3366) // Élénk rózsaszín/piros
+        0 -> if (isDark) Color(0xFF00FF66) else Color(0xFF0284C7)
+        1 -> Color(0xFFFFD700)
+        2 -> Color(0xFF0284C7)
+        3 -> Color(0xFF8B5CF6)
+        4 -> Color(0xFFFF3366)
         else -> if (isDark) Color(0xFF00FF66) else Color(0xFF0284C7)
     }
 }
@@ -952,7 +952,6 @@ class GoalCheckWorker(appContext: Context, workerParams: WorkerParameters) : Cor
                 val id = match.mainId ?: "${match.home?.name}-${match.away?.name}"
                 val isFav = favoriteIds.contains(id)
 
-                // 3. opció: Kezdési értesítés (15 perccel előtte)
                 if (isFav && isUpcomingMatch(match)) {
                     val dateStr = match.date ?: ""
                     val timeStr = match.time ?: match.status ?: ""
@@ -966,7 +965,7 @@ class GoalCheckWorker(appContext: Context, workerParams: WorkerParameters) : Cor
                                 val diffMs = parsedDate.time - System.currentTimeMillis()
                                 val diffMins = diffMs / (1000 * 60)
                                 if (diffMins in 0..16) {
-                                    val eventKey = "start_notif_$id"
+                                    val eventKey = "start_notif_${id}"
                                     if (!isEventAlreadyProcessed(context, eventKey)) {
                                         sendSystemNotification(context, "Mérkőzés Emlékeztető ⚽", "15 perc múlva kezdődik: ${match.home?.name} vs ${match.away?.name}")
                                         markEventAsProcessed(context, eventKey)
@@ -977,10 +976,9 @@ class GoalCheckWorker(appContext: Context, workerParams: WorkerParameters) : Cor
                     }
                 }
 
-                // Élő gól értesítések
                 if (isFav && isLiveMatch(match) && notifGoals) {
                     val scoreStr = "${match.home?.goals ?: "0"}-${match.away?.goals ?: "0"}"
-                    val eventKey = "goal_$id_$scoreStr"
+                    val eventKey = "goal_${id}_$scoreStr"
                     if (!isEventAlreadyProcessed(context, eventKey)) {
                         sendSystemNotification(context, "GÓL! ⚽", "${match.home?.name} ${match.home?.goals} - ${match.away?.goals} ${match.away?.name}")
                         markEventAsProcessed(context, eventKey)
@@ -2816,7 +2814,6 @@ fun MatchDetailScreen(
             "H2H" -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (h2hMatches.isNotEmpty()) {
-                        // 1. opció: Trend számítás az utolsó találkozókból
                         val totalCount = h2hMatches.size
                         val over25Count = h2hMatches.count { m ->
                             val s1 = m.team1Score?.toIntOrNull() ?: 0
@@ -4013,7 +4010,6 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentC
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 4. opció: Akcentus szín választó
         Text(
             text = "🎨 Kiemelő (Accent) Szín",
             color = colors.accentPrimary,
