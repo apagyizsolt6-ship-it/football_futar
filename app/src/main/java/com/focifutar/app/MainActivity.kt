@@ -4425,3 +4425,38 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentC
         }
     }
 }
+Button(
+            onClick = {
+                saveApiKey(context, apiKeyInput)
+                saveTheOddsApiKey(context, theOddsKeyInput)
+                saveHighlightlyApiKey(context, highlightlyKeyInput)
+                Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
+                navController.popBackStack()
+            },
+            ...
+        ) {
+            Text(text = "Mentés", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+// ========== IDE MÁSOLD BE A KÉT ÚJ FÜGGVÉNYT ==========
+
+@Composable
+fun LiveScoreboardStrip(
+    liveMatches: List<StatPalMatch>,
+    colors: AppColors,
+    onMatchClick: (StatPalMatch) -> Unit = {}
+) {
+    // ... a korábban küldött kód ...
+}
+
+@Composable
+fun LiveMatchesScreen(
+    navController: NavController,
+    colors: AppColors,
+    liveMatches: List<StatPalMatch>,
+    onRefresh: () -> Unit = {}
+) {
+    // ... a korábban küldött kód ...
+}
