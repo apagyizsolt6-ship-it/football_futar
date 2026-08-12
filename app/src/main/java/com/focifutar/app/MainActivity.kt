@@ -4511,15 +4511,66 @@ fun LiveMatchesScreen(
     navController: NavController,
     colors: AppColors
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var liveMatches by remember { mutableStateOf<List<Triple<StatPalMatch, String?, String?>>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun loadLiveMatches() {
+        val apiKey = getApiKey(context)
+        if (apiKey.isBlank()) {
+            errorMessage = "Nincs StatPal API kulcs beállítva!"
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        errorMessage = null
+
+        coroutineScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    StatPalClient.service.getDailyMatches(apiKey, 0)
+                }
+                val rawLeagues = response.liveMatches?.league.orEmpty()
+                    .filter { isAllowedLeague(it.name) }
+
+                val result = rawLeagues.flatMap { league ->
+                    league.match
+                        .filter { isLiveMatch(it) }
+                        .map { match ->
+                            Triple(match, league.id ?: league.name, league.name)
+                        }
+                }.sortedByDescending { (match, _, _) ->
+                    val status = (match.status ?: match.time ?: "").replace("'", "").trim()
+                    status.toIntOrNull() ?: 0
+                }
+
+                liveMatches = result
+            } catch (e: Exception) {
+                errorMessage = "Hiba a betöltéskor: ${e.message}"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadLiveMatches()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
     ) {
+        // Fejléc
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -4530,25 +4581,131 @@ fun LiveMatchesScreen(
                 modifier = Modifier.clickable { navController.popBackStack() }
             )
             Text(
-                text = "ÉLŐ MÉRKŐZÉSEK",
+                text = "🔴 ÉLŐ MÉRKŐZÉSEK",
                 color = colors.textPrimary,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
+                fontSize = 17.sp
             )
-            Spacer(modifier = Modifier.width(48.dp))
+            Text(
+                text = "🔄",
+                fontSize = 20.sp,
+                modifier = Modifier.clickable { loadLiveMatches() }
+            )
         }
 
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Az élő mérkőzések a főképernyőn jelennek meg.\nHasználd a 🔴 ÉLŐ szűrőt.",
-                color = colors.textMuted,
-                fontSize = 15.sp,
-                textAlign = TextAlign.Center
-            )
+        when {
+            isLoading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = colors.accentPrimary)
+                }
+            }
+            errorMessage != null -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(text = errorMessage!!, color = colors.accentRed, textAlign = TextAlign.Center)
+                }
+            }
+            liveMatches.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Jelenleg nincs élő mérkőzés", color = colors.textMuted, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Nézz vissza később!", color = colors.textMuted, fontSize = 13.sp)
+                    }
+                }
+            }
+            else -> {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(liveMatches) { (match, leagueKey, leagueName) ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedMatchGlobal = match
+                                    selectedLeagueIdGlobal = leagueKey
+                                    navController.navigate("match_detail")
+                                }
+                                .border(1.dp, colors.accentRed.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = translateLeagueName(leagueName),
+                                        color = colors.textMuted,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = translateStatus(match.status ?: match.time),
+                                        color = colors.accentRed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        TeamLogo(team = match.home, colors = colors, modifier = Modifier.size(28.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = match.home?.name ?: "Hazai",
+                                            color = colors.textPrimary,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "${match.home?.goals ?: 0} - ${match.away?.goals ?: 0}",
+                                        color = colors.accentPrimary,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 18.sp,
+                                        modifier = Modifier.padding(horizontal = 10.dp)
+                                    )
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.End,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = match.away?.name ?: "Vendég",
+                                            color = colors.textPrimary,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.End,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        TeamLogo(team = match.away, colors = colors, modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
-
