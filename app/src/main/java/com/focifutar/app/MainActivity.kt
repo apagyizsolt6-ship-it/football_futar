@@ -4419,44 +4419,136 @@ fun ApiSettingsScreen(navController: NavController, colors: AppColors, onAccentC
             },
             colors = ButtonDefaults.buttonColors(containerColor = colors.accentPrimary),
             shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+            modifier = Modifier.fillMaxWidth() 
+) {
             Text(text = "Mentés", color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
-}
-Button(
-            onClick = {
-                saveApiKey(context, apiKeyInput)
-                saveTheOddsApiKey(context, theOddsKeyInput)
-                saveHighlightlyApiKey(context, highlightlyKeyInput)
-                Toast.makeText(context, "Beállítások elmentve!", Toast.LENGTH_SHORT).show()
-                navController.popBackStack()
-            },
-            ...
-        ) {
-            Text(text = "Mentés", color = Color.White, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-// ========== IDE MÁSOLD BE A KÉT ÚJ FÜGGVÉNYT ==========
-
+} 
 @Composable
 fun LiveScoreboardStrip(
-    liveMatches: List<StatPalMatch>,
+    leagues: List<StatPalLeague>,
     colors: AppColors,
-    onMatchClick: (StatPalMatch) -> Unit = {}
+    onMatchClick: (StatPalMatch, String?) -> Unit,
+    onSeeAllClick: () -> Unit
 ) {
-    // ... a korábban küldött kód ...
+    val liveMatches = remember(leagues) {
+        leagues.flatMap { league ->
+            league.match.filter { isLiveMatch(it) }.map { it to (league.id ?: league.name) }
+        }
+    }
+
+    if (liveMatches.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.cardBackground)
+            .padding(vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "🔴 ÉLŐ MÉRKŐZÉSEK (${liveMatches.size})",
+                color = colors.accentRed,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+            Text(
+                text = "Összes →",
+                color = colors.accentPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { onSeeAllClick() }
+            )
+        }
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(liveMatches) { (match, leagueKey) ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = colors.background),
+                    modifier = Modifier
+                        .width(170.dp)
+                        .clickable { onMatchClick(match, leagueKey) }
+                        .border(1.dp, colors.accentRed.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = translateStatus(match.status ?: match.time),
+                            color = colors.accentRed,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "${match.home?.name ?: "?"}  ${match.home?.goals ?: 0} - ${match.away?.goals ?: 0}  ${match.away?.name ?: "?"}",
+                            color = colors.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 fun LiveMatchesScreen(
     navController: NavController,
-    colors: AppColors,
-    liveMatches: List<StatPalMatch>,
-    onRefresh: () -> Unit = {}
+    colors: AppColors
 ) {
-    // ... a korábban küldött kód ...
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "← Vissza",
+                color = colors.accentPrimary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { navController.popBackStack() }
+            )
+            Text(
+                text = "ÉLŐ MÉRKŐZÉSEK",
+                color = colors.textPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Spacer(modifier = Modifier.width(48.dp))
+        }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Az élő mérkőzések a főképernyőn jelennek meg.\nHasználd a 🔴 ÉLŐ szűrőt.",
+                color = colors.textMuted,
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
 }
+
