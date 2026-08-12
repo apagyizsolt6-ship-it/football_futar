@@ -1029,6 +1029,9 @@ class MainActivity : ComponentActivity() {
                         composable("saved_bets") {
                             SavedBetsScreen(navController, colors)
                         }
+                        composable("live_matches") {
+                            LiveMatchesScreen(navController, colors)
+                        }
                         composable("match_detail") {
                             selectedMatchGlobal?.let { match ->
                                 MatchDetailScreen(match, selectedLeagueIdGlobal, navController, colors, betSlipItems) { item ->
