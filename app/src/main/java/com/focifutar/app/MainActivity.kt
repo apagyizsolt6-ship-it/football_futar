@@ -1691,7 +1691,22 @@ fun MatchesListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                if (featuredMatchPair != null && !isFeaturedDismissed && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null && !isPastDay) {
+               if (totalLiveCount > 0 && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null && !isPastDay) {
+                    item {
+                        LiveScoreboardStrip(
+                            leagues = leagues,
+                            colors = colors,
+                            onMatchClick = { m, leagueKey ->
+                                selectedMatchGlobal = m
+                                selectedLeagueIdGlobal = leagueKey
+                                navController.navigate("match_detail")
+                            },
+                            onSeeAllClick = { navController.navigate("live_matches") }
+                        )
+                    }
+                }
+
+                if (featuredMatchPair != null && !isFeaturedDismissed && searchQuery.isBlank() && !isOnlyLiveFilter && selectedTimeFilterHours == null && !isPastDay) { 
                     item {
                         FeaturedMatchBanner(
                             match = featuredMatchPair.first,
