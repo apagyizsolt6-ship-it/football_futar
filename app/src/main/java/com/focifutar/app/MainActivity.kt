@@ -1499,6 +1499,21 @@ fun MatchesListScreen(
                     }
                 }
 
+                if (totalLiveCount > 0) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(colors.cardBackground)
+                                .border(1.dp, colors.accentRed.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+                                .clickable { navController.navigate("live_matches") }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text(text = "📺 Élő nézet", color = colors.accentRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 item {
                     Box(
                         modifier = Modifier
