@@ -1150,8 +1150,8 @@ fun MatchesListScreen(
                     val response = service.getHighlights(highlightKey)
                     val teams = mutableSetOf<String>()
                     response.data.forEach { h ->
-                        teams.add(h.match.homeTeam.name.lowercase().trim())
-                        teams.add(h.match.awayTeam.name.lowercase().trim())
+                        h.match?.homeTeam?.name?.lowercase()?.trim()?.let { teams.add(it) }
+                        h.match?.awayTeam?.name?.lowercase()?.trim()?.let { teams.add(it) }
                     }
                     videoTeamNames = teams
                 } catch (_: Exception) {}
@@ -2676,8 +2676,9 @@ fun MatchDetailScreen(
                     isLoadingOdds = true
                     coroutineScope.launch {
                         try {
-                            val response = StatPalClient.service.getPrematchOdds(lId, apiKey)
-                            val allPrematchMatches = response.prematchOdds?.league.orEmpty().flatMap { it.match }
+                          // val response = StatPalClient.service.getPrematchOdds(lid, apiKey)
+                        // val allPrematchMatches = response.prematchOdds?.league.orEmpty().flatMap { it.match }
+                            val allPrematchMatches = emptyList<PrematchOddsMatch>()  
                             val matchFound = allPrematchMatches.find { oddMatch ->
                                 oddMatch.mainId == matchId || 
                                 oddMatch.fallbackId1 == matchId || 
@@ -2766,8 +2767,8 @@ fun MatchDetailScreen(
                             val service = HighlightlyService.create()
                             val response = service.getHighlights(highlightApiKey, teamName = match.home?.name)
                             highlights = response.data.filter { 
-                                it.match.homeTeam.name.equals(match.home?.name, ignoreCase = true) ||
-                                it.match.awayTeam.name.equals(match.away?.name, ignoreCase = true)
+                                it.match?.homeTeam?.name?.equals(match.home?.name, ignoreCase = true) == true ||
+                                it.match?.awayTeam?.name?.equals(match.away?.name, ignoreCase = true) == true
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -3108,7 +3109,7 @@ fun MatchDetailScreen(
                                     }
                                     Column(modifier = Modifier.padding(12.dp)) {
                                         Text(
-                                            text = item.title,
+                                            text = item.title ?: "", 
                                             color = colors.textPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp
