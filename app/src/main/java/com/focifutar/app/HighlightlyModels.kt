@@ -91,3 +91,17 @@ data class HighlightlyMatchOddsSummary(
 // ========== HIGHLIGHTS (ha már van a StatPalModels-ben, ne ismételd) ==========
 // A HighlightResponse, HighlightMatch stb. maradhat a StatPalModels.kt-ban,
 // ha már ott van.
+
+// ========== MATCH DETAIL (minimal, for getMatchById) ==========
+
+data class HighlightlyMatchDetail(
+    val id: Long? = null,
+    val date: String? = null,
+    val homeTeam: HighlightlyTeam? = null,
+    val awayTeam: HighlightlyTeam? = null,
+    val league: HighlightlyLeagueInfo? = null,
+    val state: HighlightlyMatchState? = null,
+    val score: HighlightlyScore? = null,
+    val venue: String? = null,
+    val referee: String? = null
+)

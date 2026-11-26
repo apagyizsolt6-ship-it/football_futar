@@ -1146,8 +1146,7 @@ fun MatchesListScreen(
         if (highlightKey.isNotBlank()) {
             coroutineScope.launch(Dispatchers.IO) {
                 try {
-                    val service = HighlightlyService.create()
-                    val response = service.getHighlights(highlightKey)
+                    val response = HighlightlyService.api.getHighlights(highlightKey)
                     val teams = mutableSetOf<String>()
                     response.data.forEach { h ->
                         h.match?.homeTeam?.name?.lowercase()?.trim()?.let { teams.add(it) }
@@ -2764,8 +2763,7 @@ fun MatchDetailScreen(
                     isLoadingHighlights = true
                     coroutineScope.launch {
                         try {
-                            val service = HighlightlyService.create()
-                            val response = service.getHighlights(highlightApiKey, teamName = match.home?.name)
+                            val response = HighlightlyService.api.getHighlights(highlightApiKey)
                             highlights = response.data.filter { 
                                 it.match?.homeTeam?.name?.equals(match.home?.name, ignoreCase = true) == true ||
                                 it.match?.awayTeam?.name?.equals(match.away?.name, ignoreCase = true) == true
