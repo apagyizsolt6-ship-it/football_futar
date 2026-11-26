@@ -3033,19 +3033,9 @@ fun MatchDetailScreen(
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = colors.accentPrimary)
                     }
-                } else if (lineupData == null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
-                        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("📋 KEZDŐCSAPATOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("A kezdőcsapatok a kezdés előtt 60 perccel válnak elérhetővé.", color = colors.textPrimary, fontSize = 13.sp)
-                        }
-                    }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Pálya animáció MINDIG megjelenik (akkor is, ha nincs line-up adat)
                         item {
                             PitchLineupView(
                                 home = lineupData?.home,
@@ -3053,17 +3043,34 @@ fun MatchDetailScreen(
                                 colors = colors
                             )
                         }
-                        item {
-                            Text(
-                                text = "Részletes lista",
-                                color = colors.textMuted,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
+                        if (lineupData == null) {
+                            // Nincs adat → 60 perces üzenet a pálya alatt
+                            item {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                                    modifier = Modifier.fillMaxWidth().border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text("📋 KEZDŐCSAPATOK", color = colors.accentYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("A kezdőcsapatok a kezdés előtt 60 perccel válnak elérhetővé.", color = colors.textPrimary, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            // Van adat → részletes lista
+                            item {
+                                Text(
+                                    text = "Részletes lista",
+                                    color = colors.textMuted,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            item { LineupSection(lineupData?.home, colors) }
+                            item { LineupSection(lineupData?.away, colors) }
                         }
-                        item { LineupSection(lineupData?.home, colors) }
-                        item { LineupSection(lineupData?.away, colors) }
                     }
                 }
             }
