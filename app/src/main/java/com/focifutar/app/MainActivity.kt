@@ -3045,7 +3045,23 @@ fun MatchDetailScreen(
                         }
                     }
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        item {
+                            PitchLineupView(
+                                home = lineupData?.home,
+                                away = lineupData?.away,
+                                colors = colors
+                            )
+                        }
+                        item {
+                            Text(
+                                text = "Részletes lista",
+                                color = colors.textMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                         item { LineupSection(lineupData?.home, colors) }
                         item { LineupSection(lineupData?.away, colors) }
                     }
